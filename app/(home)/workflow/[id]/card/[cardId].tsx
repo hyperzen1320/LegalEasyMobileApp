@@ -16,7 +16,6 @@ import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import DateTimePicker from "@react-native-community/datetimepicker";
 
 import {
   partnerGetTask,
@@ -38,6 +37,7 @@ import {
   type DeleteRequestRequiredError,
 } from "../../../../../lib/api";
 import RequestDeleteSheet from "../../../../../components/workflow/RequestDeleteSheet";
+import DatePickerSheet from "../../../../../components/workflow/DatePickerSheet";
 
 const PRIORITY_OPTIONS: { value: CardPriority; label: string; color: string }[] =
   [
@@ -666,58 +666,14 @@ export default function CardDetail() {
         )}
       </SafeAreaView>
 
-      {/* Date picker modal */}
-      {datePickerOpen ? (
-        Platform.OS === "ios" ? (
-          <Modal
-            transparent
-            animationType="fade"
-            onRequestClose={() => setDatePickerOpen(false)}
-          >
-            <Pressable
-              onPress={() => setDatePickerOpen(false)}
-              className="flex-1 justify-end"
-              style={{ backgroundColor: "rgba(10,17,36,0.55)" }}
-            >
-              <View
-                className="rounded-t-3xl px-5 py-4"
-                style={{ backgroundColor: "#ffffff" }}
-              >
-                <DateTimePicker
-                  mode="date"
-                  display="inline"
-                  value={dueDate ?? new Date()}
-                  onChange={(_, d) => {
-                    if (d) setDueDate(d);
-                  }}
-                />
-                <Pressable
-                  onPress={() => setDatePickerOpen(false)}
-                  className="mt-3 self-center"
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Manrope-SemiBold",
-                      color: "#0a1124",
-                    }}
-                  >
-                    Done
-                  </Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            mode="date"
-            value={dueDate ?? new Date()}
-            onChange={(_, d) => {
-              setDatePickerOpen(false);
-              if (d) setDueDate(d);
-            }}
-          />
-        )
-      ) : null}
+      {/* Date picker — pure-JS month grid, works in Expo Go without
+          any native module. */}
+      <DatePickerSheet
+        visible={datePickerOpen}
+        initial={dueDate}
+        onClose={() => setDatePickerOpen(false)}
+        onPick={(d) => setDueDate(d)}
+      />
 
       {/* Assignee picker */}
       <Modal
