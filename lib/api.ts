@@ -122,11 +122,21 @@ export async function clearToken(): Promise<void> {
 }
 
 /* ─────────── Fetch wrapper ─────────── */
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  // Full parsed JSON response body, when the server returned one. Some
+  // endpoints (smart-delete) include structured codes on 4xx responses
+  // that callers need to read; throwing away the body would force them
+  // back to string-matching the message.
+  body: Record<string, unknown> | null;
+  constructor(
+    message: string,
+    status: number,
+    body: Record<string, unknown> | null = null
+  ) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -159,10 +169,14 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    const body =
+      data && typeof data === "object"
+        ? (data as Record<string, unknown>)
+        : null;
     const msg =
-      (data as { error?: string } | null)?.error ??
+      (body?.error as string | undefined) ??
       `Request failed (${res.status})`;
-    throw new ApiError(msg, res.status);
+    throw new ApiError(msg, res.status, body);
   }
 
   return data as T;
@@ -639,6 +653,445 @@ export async function partnerCreateBoard(
   });
 }
 
+/* ─── Board state — lists, tasks, edges, members ───────────────────────
+   These types mirror the web app's `/api/app/boards/[id]/full` response
+   one-for-one. Keep them in sync if the web payload ever changes. */
+
+export type BoardMember = { id: string; name: string; role: string };
+
+export type CanvasList = {
+  id: string;
+  title: string;
+  sortOrder: number;
+  position: { x: number; y: number };
+  width: number;
+  color: string | null;
+};
+
+export type CanvasEdge = {
+  id: string;
+  sourceListId: string;
+  targetListId: string;
+  sourceHandle: string;
+  targetHandle: string;
+  label: string;
+  color: string | null;
+  style: "solid" | "dashed";
+};
+
+export type CardChecklistSummary = {
+  totalChecklists: number;
+  totalItems: number;
+  doneItems: number;
+};
+
+export type CardPriority = "low" | "medium" | "high" | null;
+
+export type PreviewTask = {
+  id: string;
+  listId: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  assignee: { id: string; name: string; role: string } | null;
+  dueDate: string | null;
+  priority: CardPriority;
+  checklistSummary: CardChecklistSummary;
+  hasDescription: boolean;
+  updatedAt: string;
+};
+
+export type BoardFullResponse = {
+  board: {
+    id: string;
+    title: string;
+    description: string;
+    color: BoardColor;
+  };
+  lists: CanvasList[];
+  edges: CanvasEdge[];
+  tasks: PreviewTask[];
+  members: BoardMember[];
+  role: string;
+  currentUserId: string;
+};
+
+export async function partnerGetBoardFull(
+  id: string
+): Promise<BoardFullResponse> {
+  return api<BoardFullResponse>(`/api/app/boards/${id}/full`, {
+    method: "GET",
+  });
+}
+
+/* ─── Lists CRUD ─────────────────────────────────────────────────────── */
+
+export async function partnerCreateList(
+  boardId: string,
+  payload: { title: string }
+): Promise<{
+  ok: true;
+  list: { id: string; title: string; sortOrder: number };
+}> {
+  return api(`/api/app/boards/${boardId}/lists`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerUpdateList(
+  listId: string,
+  payload: { title?: string; color?: string | null }
+): Promise<{
+  ok: true;
+  list: { id: string; title: string; sortOrder: number };
+}> {
+  return api(`/api/app/lists/${listId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type DeleteRequestRequiredError = {
+  error: string;
+  code: "delete_request_required";
+  targetType: "list" | "task" | "board" | "case" | "client" | "court" | "prompt";
+  targetId: string;
+  targetName: string;
+};
+
+/**
+ * Reads a thrown ApiError to see if the server is asking the user to file
+ * a delete request instead of direct-deleting. Returns the structured
+ * payload when that's the case, null otherwise.
+ */
+export function deleteRequestRequired(
+  err: unknown
+): DeleteRequestRequiredError | null {
+  if (!(err instanceof ApiError)) return null;
+  if (err.status !== 403) return null;
+  const body = err.body;
+  if (!body || body.code !== "delete_request_required") return null;
+  return body as unknown as DeleteRequestRequiredError;
+}
+
+export async function partnerDeleteList(
+  listId: string
+): Promise<{ ok: true; cardsRemoved?: number }> {
+  return api(`/api/app/lists/${listId}`, { method: "DELETE" });
+}
+
+/* ─── Tasks (cards) CRUD ─────────────────────────────────────────────── */
+
+export type TaskFullChecklistItem = {
+  id: string;
+  text: string;
+  done: boolean;
+  sortOrder: number;
+};
+
+export type TaskFullChecklist = {
+  id: string;
+  title: string;
+  sortOrder: number;
+  items: TaskFullChecklistItem[];
+};
+
+export type SerializedTaskFull = {
+  id: string;
+  listId: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  assignee: { id: string; name: string; role: string } | null;
+  dueDate: string | null;
+  priority: CardPriority;
+  checklistSummary: CardChecklistSummary;
+  hasDescription: boolean;
+  updatedAt: string;
+  checklists: TaskFullChecklist[];
+};
+
+export type TaskFullResponse = {
+  task: SerializedTaskFull;
+  activity: Array<{
+    id: string;
+    action: string;
+    actorName: string;
+    message: string;
+    createdAt: string;
+    metadata: Record<string, unknown>;
+  }>;
+};
+
+export async function partnerCreateTask(
+  boardId: string,
+  payload: { listId: string; title: string }
+): Promise<{ ok: true; task: PreviewTask }> {
+  return api(`/api/app/boards/${boardId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerGetTask(taskId: string): Promise<TaskFullResponse> {
+  return api<TaskFullResponse>(`/api/app/tasks/${taskId}`, { method: "GET" });
+}
+
+export async function partnerUpdateTask(
+  taskId: string,
+  payload: {
+    title?: string;
+    description?: string;
+    assignedToUserId?: string | null;
+    dueDate?: string | null;
+    priority?: CardPriority;
+  }
+): Promise<{ ok: true }> {
+  return api(`/api/app/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteTask(
+  taskId: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/tasks/${taskId}`, { method: "DELETE" });
+}
+
+export async function partnerMoveTask(
+  taskId: string,
+  payload: { toListId: string; toIndex: number }
+): Promise<{ ok: true; listId: string; sortOrder: number }> {
+  return api(`/api/app/tasks/${taskId}/move`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ─── Checklists ─────────────────────────────────────────────────────── */
+
+export async function partnerAddChecklist(
+  taskId: string,
+  payload: { title: string }
+): Promise<{ ok: true; checklist: TaskFullChecklist }> {
+  return api(`/api/app/tasks/${taskId}/checklists`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerUpdateChecklist(
+  taskId: string,
+  clId: string,
+  payload: { title: string }
+): Promise<{ ok: true }> {
+  return api(`/api/app/tasks/${taskId}/checklists/${clId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteChecklist(
+  taskId: string,
+  clId: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/tasks/${taskId}/checklists/${clId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function partnerAddChecklistItem(
+  taskId: string,
+  clId: string,
+  payload: { text: string }
+): Promise<{ ok: true; item: TaskFullChecklistItem }> {
+  return api(`/api/app/tasks/${taskId}/checklists/${clId}/items`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerUpdateChecklistItem(
+  taskId: string,
+  clId: string,
+  itemId: string,
+  payload: { text?: string; done?: boolean }
+): Promise<{ ok: true }> {
+  return api(
+    `/api/app/tasks/${taskId}/checklists/${clId}/items/${itemId}`,
+    { method: "PATCH", body: JSON.stringify(payload) }
+  );
+}
+
+export async function partnerDeleteChecklistItem(
+  taskId: string,
+  clId: string,
+  itemId: string
+): Promise<{ ok: true }> {
+  return api(
+    `/api/app/tasks/${taskId}/checklists/${clId}/items/${itemId}`,
+    { method: "DELETE" }
+  );
+}
+
+/* ─── Activity, live feed, presence, delete requests ───────────────── */
+
+export type LiveActivityRow = {
+  id: string;
+  actorUserId: string | null;
+  actorName: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  targetName: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  boardId: string | null;
+  createdAt: string;
+};
+
+export type LiveFeedResponse = {
+  events: LiveActivityRow[];
+  latestId: string | null;
+  serverTime: number;
+  truncated?: boolean;
+};
+
+export async function partnerLiveFeed(opts: {
+  since?: string | null;
+  boardId?: string | null;
+  limit?: number;
+}): Promise<LiveFeedResponse> {
+  const qs = new URLSearchParams();
+  if (opts.since) qs.set("since", opts.since);
+  if (opts.boardId) qs.set("board", opts.boardId);
+  if (opts.limit) qs.set("limit", String(opts.limit));
+  return api<LiveFeedResponse>(
+    `/api/app/activity/live?${qs.toString()}`,
+    { method: "GET" }
+  );
+}
+
+export type ActivityHistoryRow = {
+  id: string;
+  actorUserId: string | null;
+  actorName: string;
+  actorEmail: string;
+  actorType: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  targetName: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  boardId: string | null;
+  createdAt: string;
+};
+
+export async function partnerActivityHistory(opts: {
+  boardId?: string;
+  limit?: number;
+  before?: string;
+}): Promise<{
+  activity: ActivityHistoryRow[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
+  const qs = new URLSearchParams();
+  if (opts.boardId) qs.set("board", opts.boardId);
+  qs.set("limit", String(opts.limit ?? 50));
+  if (opts.before) qs.set("before", opts.before);
+  return api(`/api/app/activity?${qs.toString()}`, { method: "GET" });
+}
+
+export type PartnerPresenceUser = {
+  userId: string;
+  name: string;
+  role: string;
+  designation: string;
+  lastBeat: string;
+  isYou: boolean;
+};
+
+export async function partnerHeartbeat(
+  boardId: string
+): Promise<{ active: PartnerPresenceUser[] }> {
+  return api(`/api/app/boards/${boardId}/heartbeat`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export type DeleteRequestRow = {
+  id: string;
+  requesterName: string;
+  targetType: string;
+  targetId: string;
+  targetName: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | "obsolete";
+  createdAt: string;
+  reviewedByName?: string;
+  reviewerNote?: string;
+};
+
+export async function partnerListDeleteRequests(opts: {
+  status?: "pending" | "approved" | "rejected" | "obsolete";
+  boardId?: string;
+  limit?: number;
+}): Promise<{ requests: DeleteRequestRow[] }> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set("status", opts.status);
+  if (opts.boardId) qs.set("boardId", opts.boardId);
+  if (opts.limit) qs.set("limit", String(opts.limit));
+  return api(`/api/app/delete-requests?${qs.toString()}`, { method: "GET" });
+}
+
+export async function partnerCreateDeleteRequest(payload: {
+  targetType: "list" | "task" | "board" | "case" | "client" | "court" | "prompt";
+  targetId: string;
+  reason: string;
+}): Promise<{ ok: true; id: string }> {
+  return api(`/api/app/delete-requests`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerApproveDeleteRequest(
+  id: string,
+  note?: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/delete-requests/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ note: note ?? "" }),
+  });
+}
+
+export async function partnerRejectDeleteRequest(
+  id: string,
+  note?: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/delete-requests/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ note: note ?? "" }),
+  });
+}
+
+export async function partnerDeleteRequestCount(opts?: {
+  boardId?: string;
+}): Promise<{ count: number }> {
+  const qs = new URLSearchParams();
+  if (opts?.boardId) qs.set("boardId", opts.boardId);
+  const suffix = qs.toString();
+  return api(
+    `/api/app/delete-requests/count${suffix ? `?${suffix}` : ""}`,
+    { method: "GET" }
+  );
+}
+
 /* ─── Courts ─── */
 
 export type PartnerCourt = {
@@ -756,4 +1209,3 @@ export async function adminUpdatePlan(
   });
 }
 
-export { ApiError };
