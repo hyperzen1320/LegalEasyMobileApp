@@ -13,10 +13,12 @@ import { useState } from "react";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import UnderlineField from "../../components/UnderlineField";
 import PrimaryButton from "../../components/PrimaryButton";
-import { login, ApiError } from "../../lib/api";
+import { ApiError } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
 
 export default function SignIn() {
   const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -33,6 +35,10 @@ export default function SignIn() {
 
     setSubmitting(true);
     try {
+      // login() in AuthContext both persists the token AND refreshes the
+      // session so the dashboard router sees an authenticated state
+      // immediately. Without that refresh the router would briefly see
+      // status="guest" and bounce us right back to signin.
       await login(email.trim(), password);
       router.replace("/dashboard");
     } catch (err) {

@@ -1,38 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { getMe, logout } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
 
 export default function HomeLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [checking, setChecking] = useState(true);
+  const { status, isGlobalAdmin } = useAuth();
 
+  // Two redirects this layout enforces:
+  //  - no session → back to signin
+  //  - global_admin landed here by accident → bounce to admin shell
+  // We don't run our own getMe probe; AuthContext already did that on
+  // mount and any session change re-renders this layout.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await getMe();
-        if (!alive) return;
-        if (data.user.userType === "global_admin") {
-          router.replace("/(admin)/dashboard");
-          return;
-        }
-        setChecking(false);
-      } catch {
-        if (!alive) return;
-        await logout();
-        router.replace("/signin");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [router]);
+    if (status === "loading") return;
+    if (status === "guest") {
+      router.replace("/signin");
+      return;
+    }
+    if (isGlobalAdmin) router.replace("/(admin)/dashboard");
+  }, [status, isGlobalAdmin, router]);
 
-  if (checking) {
+  if (status !== "authenticated" || isGlobalAdmin) {
     return (
       <View
         className="flex-1 items-center justify-center"

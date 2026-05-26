@@ -1,21 +1,9 @@
-import { useEffect, useState } from "react";
-import {
-  ScrollView,
-  View,
-  Text,
-  Pressable,
-  ActivityIndicator,
-} from "react-native";
+import { ScrollView, View, Text, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import {
-  getMe,
-  logout,
-  type MobileUser,
-  type MobilePartner,
-} from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
 
 type MoreItem = {
   label: string;
@@ -27,28 +15,7 @@ type MoreItem = {
 
 export default function More() {
   const router = useRouter();
-  const [user, setUser] = useState<MobileUser | null>(null);
-  const [partner, setPartner] = useState<MobilePartner | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await getMe();
-        if (!alive) return;
-        setUser(data.user);
-        setPartner(data.partner);
-      } catch {
-        /* handled by layout */
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const { user, partner, logout } = useAuth();
 
   async function onSignOut() {
     await logout();
@@ -102,17 +69,6 @@ export default function More() {
       onPress: onSignOut,
     },
   ];
-
-  if (loading) {
-    return (
-      <View
-        className="flex-1 items-center justify-center"
-        style={{ backgroundColor: "#f4ede0" }}
-      >
-        <ActivityIndicator color="#c5853a" size="large" />
-      </View>
-    );
-  }
 
   return (
     <View className="flex-1 bg-app-canvas">

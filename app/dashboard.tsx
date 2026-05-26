@@ -1,38 +1,32 @@
 import { useEffect } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { getMe, logout } from "../lib/api";
+import { useAuth } from "../lib/auth-context";
 
-/**
- * Post-login routing screen.
- *  - global_admin → /admin/dashboard (Pocket Plex tabbed experience)
- *  - partner_admin / user → /home (the partner-side stub, TBD)
- *  - if token is invalid → /signin
- */
+// Post-login routing screen. Reads from AuthContext rather than re-
+// running getMe — the provider's boot probe is the single round-trip
+// for the whole app lifecycle.
+//
+//   global_admin → /(admin)/dashboard (Pocket Plex shell)
+//   partner_admin / user → /(home)/home (Midnight Counsel shell)
+//   no session → /signin
+//
+// The component itself renders the "Opening chambers…" spinner only
+// while the AuthContext probe is in flight, which is normally a single
+// frame after a fresh launch and zero frames when navigated to from
+// signin (already authenticated by then).
 export default function DashboardRouter() {
   const router = useRouter();
+  const { status, isGlobalAdmin } = useAuth();
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await getMe();
-        if (!alive) return;
-        if (data.user.userType === "global_admin") {
-          router.replace("/(admin)/dashboard");
-        } else {
-          router.replace("/(home)/home");
-        }
-      } catch {
-        if (!alive) return;
-        await logout();
-        router.replace("/signin");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [router]);
+    if (status === "loading") return;
+    if (status === "guest") {
+      router.replace("/signin");
+      return;
+    }
+    router.replace(isGlobalAdmin ? "/(admin)/dashboard" : "/(home)/home");
+  }, [status, isGlobalAdmin, router]);
 
   return (
     <View className="flex-1 bg-paper items-center justify-center">

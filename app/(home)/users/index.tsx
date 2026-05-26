@@ -15,16 +15,16 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   partnerListUsers,
-  getMe,
   type PartnerStaffUser,
 } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
 import { rolePill } from "../../../components/RoleHelpers";
 
 export default function UsersList() {
   const router = useRouter();
+  const { isPartnerAdmin: isAdmin } = useAuth();
   const [users, setUsers] = useState<PartnerStaffUser[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,12 +32,11 @@ export default function UsersList() {
 
   const load = useCallback(async () => {
     try {
-      const [list, me] = await Promise.all([partnerListUsers(), getMe()]);
+      const list = await partnerListUsers();
       setUsers(
         list.users.map((u) => ({ ...u, isYou: u.id === list.currentUserId }))
       );
       setCurrentUserId(list.currentUserId);
-      setIsAdmin(me.user.userType === "partner_admin");
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
