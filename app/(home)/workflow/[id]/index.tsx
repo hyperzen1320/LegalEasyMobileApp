@@ -40,8 +40,8 @@ import AddListComposer from "../../../../components/workflow/AddListComposer";
 import EdgePill from "../../../../components/workflow/EdgePill";
 import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
+import { useBreakpoint } from "../../../../lib/useBreakpoint";
 
-const LIST_WIDTH = 280;
 const TEMP_PREFIX = "tmp:";
 
 function tempId(): string {
@@ -58,6 +58,16 @@ export default function BoardDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const boardId = String(id);
   const router = useRouter();
+
+  // Compact keeps a peek of the next column (the "there's more" cue);
+  // bigger windows get fixed, comfortable column widths and free scroll.
+  const { bp, width: windowWidth, isExpanded } = useBreakpoint();
+  const listWidth =
+    bp === "compact"
+      ? Math.min(300, Math.round(windowWidth * 0.78))
+      : bp === "medium"
+        ? 320
+        : 340;
 
   const [data, setData] = useState<BoardFullResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,7 +217,7 @@ export default function BoardDetail() {
         title,
         sortOrder: data.lists.length,
         position: { x: 0, y: 0 },
-        width: LIST_WIDTH,
+        width: listWidth,
         color: null,
       };
       setData((prev) =>
@@ -243,7 +253,7 @@ export default function BoardDetail() {
         );
       }
     },
-    [data, boardId]
+    [data, boardId, listWidth]
   );
 
   const addCard = useCallback(
@@ -416,7 +426,9 @@ export default function BoardDetail() {
             horizontal
             showsHorizontalScrollIndicator={false}
             decelerationRate="fast"
-            snapToInterval={LIST_WIDTH + 12}
+            // Free scroll once three-plus columns fit; snapping fights
+            // the user when the viewport already shows several lists.
+            snapToInterval={isExpanded ? undefined : listWidth + 12}
             snapToAlignment="start"
             contentContainerStyle={{
               paddingHorizontal: 16,
@@ -439,6 +451,7 @@ export default function BoardDetail() {
                 <ListColumn
                   key={list.id}
                   list={list}
+                  listWidth={listWidth}
                   tasks={tasksByList.get(list.id) || []}
                   edges={
                     edgesByList.get(list.id) || {
@@ -459,6 +472,7 @@ export default function BoardDetail() {
               ))}
             <AddListComposer
               accent={styles.accent}
+              width={listWidth}
               onSubmit={(title) => addList(title)}
             />
             {/* trailing spacer so the last list doesn't sit flush with the edge */}
@@ -661,6 +675,7 @@ function Header({
 
 function ListColumn({
   list,
+  listWidth,
   tasks,
   edges,
   listTitleById,
@@ -670,6 +685,7 @@ function ListColumn({
   onCardLongPress,
 }: {
   list: CanvasList;
+  listWidth: number;
   tasks: PreviewTask[];
   edges: { incoming: CanvasEdge[]; outgoing: CanvasEdge[] };
   listTitleById: Map<string, string>;
@@ -684,7 +700,7 @@ function ListColumn({
   return (
     <View
       style={{
-        width: LIST_WIDTH,
+        width: listWidth,
         backgroundColor: "rgba(255,255,255,0.92)",
         borderRadius: 14,
         overflow: "hidden",

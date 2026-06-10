@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -10,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -90,94 +90,104 @@ export default function CourtHub() {
               <ActivityIndicator color="#c5853a" size="large" />
             </View>
           ) : (
-            <ScrollView
-              contentContainerClassName="px-5 pt-4 pb-12"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor="#c5853a"
-                />
-              }
+            // FlashList recycles rows — the add-form, error and search
+            // ride along as the list header; entrance animation lives on
+            // the container so it doesn't replay on recycle.
+            <Animated.View
+              entering={FadeInDown.duration(380)}
+              className="flex-1"
             >
-              <AddCourtForm onAdded={handleAdded} />
+              <FlashList
+                data={filtered}
+                keyExtractor={(c) => c.id}
+                renderItem={({ item }) => <CourtCard c={item} />}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                contentContainerStyle={{
+                  paddingHorizontal: 20,
+                  paddingTop: 16,
+                  paddingBottom: 48,
+                }}
+                ItemSeparatorComponent={RowGap}
+                ListHeaderComponent={
+                  <View>
+                    <AddCourtForm onAdded={handleAdded} />
 
-              {error ? (
-                <View
-                  className="mt-4 rounded-md px-4 py-3"
-                  style={{
-                    backgroundColor: "#f6dccd",
-                    borderWidth: 1,
-                    borderColor: "rgba(193,74,55,0.3)",
-                  }}
-                >
-                  <Text
-                    className="text-[13px]"
-                    style={{ fontFamily: "Manrope", color: "#c14a37" }}
-                  >
-                    {error}
-                  </Text>
-                </View>
-              ) : null}
-
-              {courts.length > 0 ? (
-                <View className="mt-5">
-                  <View
-                    className="flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
-                    style={{
-                      shadowColor: "#0a1124",
-                      shadowOpacity: 0.04,
-                      shadowRadius: 6,
-                      shadowOffset: { width: 0, height: 1 },
-                      elevation: 1,
-                    }}
-                  >
-                    <Feather name="search" size={15} color="#a89c80" />
-                    <TextInput
-                      value={query}
-                      onChangeText={setQuery}
-                      placeholder="Search by name, number, place..."
-                      placeholderTextColor="#a89c80"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      className="flex-1 text-[14px] text-app-ink"
-                      style={{ fontFamily: "Manrope", paddingVertical: 0 }}
-                    />
-                    {query.length > 0 ? (
-                      <Pressable
-                        onPress={() => setQuery("")}
-                        hitSlop={8}
-                        className="active:opacity-50"
+                    {error ? (
+                      <View
+                        className="mt-4 rounded-md px-4 py-3"
+                        style={{
+                          backgroundColor: "#f6dccd",
+                          borderWidth: 1,
+                          borderColor: "rgba(193,74,55,0.3)",
+                        }}
                       >
-                        <Feather name="x" size={15} color="#8a5821" />
-                      </Pressable>
+                        <Text
+                          className="text-[13px]"
+                          style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                        >
+                          {error}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {courts.length > 0 ? (
+                      <View className="mt-5 mb-4">
+                        <View
+                          className="flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
+                          style={{
+                            shadowColor: "#0a1124",
+                            shadowOpacity: 0.04,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 1 },
+                            elevation: 1,
+                          }}
+                        >
+                          <Feather name="search" size={15} color="#a89c80" />
+                          <TextInput
+                            value={query}
+                            onChangeText={setQuery}
+                            placeholder="Search by name, number, place..."
+                            placeholderTextColor="#a89c80"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            className="flex-1 text-[14px] text-app-ink"
+                            style={{
+                              fontFamily: "Manrope",
+                              paddingVertical: 0,
+                            }}
+                          />
+                          {query.length > 0 ? (
+                            <Pressable
+                              onPress={() => setQuery("")}
+                              hitSlop={8}
+                              className="active:opacity-50"
+                            >
+                              <Feather name="x" size={15} color="#8a5821" />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      </View>
                     ) : null}
                   </View>
-                </View>
-              ) : null}
-
-              {courts.length === 0 ? (
-                <EmptyHub />
-              ) : filtered.length === 0 ? (
-                <NoMatches query={query} onClear={() => setQuery("")} />
-              ) : (
-                <View className="mt-4 gap-3">
-                  {filtered.map((c, i) => (
-                    <Animated.View
-                      key={c.id}
-                      entering={FadeInDown.duration(380).delay(
-                        Math.min(i, 10) * 35
-                      )}
-                    >
-                      <CourtCard c={c} />
-                    </Animated.View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
+                }
+                ListEmptyComponent={
+                  courts.length === 0 ? (
+                    <EmptyHub />
+                  ) : (
+                    <NoMatches query={query} onClear={() => setQuery("")} />
+                  )
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor="#c5853a"
+                  />
+                }
+              />
+            </Animated.View>
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -531,6 +541,10 @@ function Field({
 }
 
 /* ─── Empty / no matches ─── */
+
+function RowGap() {
+  return <View style={{ height: 12 }} />;
+}
 
 function EmptyHub() {
   return (

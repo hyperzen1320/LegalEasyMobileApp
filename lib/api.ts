@@ -140,6 +140,35 @@ export class ApiError extends Error {
   }
 }
 
+/* ─────────── Global 401 handling ───────────
+   Module-level subscribable bridge into React state (see the deferral
+   note in auth-context.tsx). AuthProvider registers a handler that
+   clears the token and flips the session to guest; the (home)/(admin)
+   layout redirects do the navigation. Throttled so a burst of parallel
+   requests failing together signs out once, not five times. Only real
+   HTTP 401s fire it — network failures (status 0) never do. */
+let unauthorizedHandler: (() => void) | null = null;
+let lastUnauthorizedAt = 0;
+const UNAUTHORIZED_THROTTLE_MS = 5_000;
+
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+}
+
+export function notifyUnauthorized(): void {
+  const now = Date.now();
+  if (now - lastUnauthorizedAt < UNAUTHORIZED_THROTTLE_MS) return;
+  lastUnauthorizedAt = now;
+  unauthorizedHandler?.();
+}
+
+/** Authorization header for callers that fetch outside api()/apiUpload()
+ *  — the binary download paths in lib/files.ts. */
+export async function getAuthHeader(): Promise<Record<string, string>> {
+  const token = await getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const base = getApiBaseUrl();
   const token = await getToken();
@@ -176,6 +205,59 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const msg =
       (body?.error as string | undefined) ??
       `Request failed (${res.status})`;
+    // A 401 from anything but the login attempt itself means the stored
+    // token is dead — tell the auth provider so the app signs out once.
+    if (res.status === 401 && !path.startsWith("/api/mobile/login")) {
+      notifyUnauthorized();
+    }
+    throw new ApiError(msg, res.status, body);
+  }
+
+  return data as T;
+}
+
+/**
+ * Multipart upload variant of api(). Deliberately a separate function,
+ * not an option flag: it must NEVER set Content-Type. React Native's
+ * fetch generates the `multipart/form-data; boundary=…` header from the
+ * FormData itself — overriding it makes Next's request.formData() reject
+ * the body. FormData file parts are `{ uri, name, type }` objects.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const base = getApiBaseUrl();
+  const token = await getToken();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method: "POST",
+      body: form,
+      headers,
+    });
+  } catch {
+    throw new ApiError(
+      `Couldn't reach the server at ${base}. Check your network.`,
+      0
+    );
+  }
+
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* not JSON */
+  }
+
+  if (!res.ok) {
+    const body =
+      data && typeof data === "object"
+        ? (data as Record<string, unknown>)
+        : null;
+    const msg =
+      (body?.error as string | undefined) ?? `Upload failed (${res.status})`;
+    if (res.status === 401) notifyUnauthorized();
     throw new ApiError(msg, res.status, body);
   }
 
@@ -322,6 +404,8 @@ export type PartnerCase = {
   nextHearingDate: string | null;
   lastHearingDate: string | null;
   hearings: PartnerCaseHearing[];
+  disposedAt: string | null;
+  disposalRemarks: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -344,6 +428,9 @@ export type PartnerCaseInput = {
   status?: string;
   nextHearingDate?: string | null;
   lastHearingDate?: string | null;
+  // Free-form note shown on the disposed archive. Persisted whenever the
+  // status moves to "Disposed" (admin-only transition, server-enforced).
+  disposalRemarks?: string;
 };
 
 export type PartnerDashboardData = {
@@ -752,10 +839,20 @@ export async function partnerUpdateList(
   });
 }
 
+export type DeleteRequestTargetType =
+  | "list"
+  | "task"
+  | "board"
+  | "case"
+  | "client"
+  | "court"
+  | "prompt"
+  | "case_document";
+
 export type DeleteRequestRequiredError = {
   error: string;
   code: "delete_request_required";
-  targetType: "list" | "task" | "board" | "case" | "client" | "court" | "prompt";
+  targetType: DeleteRequestTargetType;
   targetId: string;
   targetName: string;
 };
@@ -1050,7 +1147,7 @@ export async function partnerListDeleteRequests(opts: {
 }
 
 export async function partnerCreateDeleteRequest(payload: {
-  targetType: "list" | "task" | "board" | "case" | "client" | "court" | "prompt";
+  targetType: DeleteRequestTargetType;
   targetId: string;
   reason: string;
 }): Promise<{ ok: true; id: string }> {
@@ -1204,6 +1301,432 @@ export async function adminUpdatePlan(
   }>
 ): Promise<{ ok: true; changes: string[] }> {
   return api(`/api/admin/subscriptions/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ─── Clients: update / delete ───────────────────────────────────────── */
+
+export async function partnerUpdateClient(
+  id: string,
+  payload: Partial<PartnerClientInput>
+): Promise<{
+  ok: true;
+  client: Omit<PartnerClient, "caseCount"> & { updatedAt: string };
+}> {
+  return api(`/api/app/clients/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteClient(
+  id: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/clients/${id}`, { method: "DELETE" });
+}
+
+/* ─── Courts: update / delete ────────────────────────────────────────── */
+
+export async function partnerUpdateCourt(
+  id: string,
+  payload: Partial<PartnerCourtInput>
+): Promise<{ ok: true; court: PartnerCourt }> {
+  return api(`/api/app/courts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteCourt(
+  id: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/courts/${id}`, { method: "DELETE" });
+}
+
+/* ─── Boards: update / delete ────────────────────────────────────────── */
+
+export async function partnerUpdateBoard(
+  id: string,
+  payload: Partial<PartnerBoardInput>
+): Promise<{ ok: true; board: PartnerBoard }> {
+  return api(`/api/app/boards/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteBoard(
+  id: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/boards/${id}`, { method: "DELETE" });
+}
+
+/* ─── Disposed cases (archive) ───────────────────────────────────────── */
+
+export type DisposedCase = {
+  id: string;
+  caseNo: string;
+  fileNo: string;
+  cnr: string;
+  title: string;
+  clientName: string;
+  clientPhone: string;
+  clientWhatsapp: string;
+  oppositeParty: string;
+  courtName: string;
+  courtHall: string;
+  courtPlace: string;
+  status: string;
+  appearingFor: string;
+  disposedAt: string | null;
+  disposalRemarks: string;
+  lastHearingDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Newest disposal first, capped at 500 server-side. Disposing/reopening
+// itself is a partnerUpdateCase() status transition ("Disposed" ⇄ other),
+// admin-only on the server.
+export async function partnerListDisposedCases(): Promise<{
+  cases: DisposedCase[];
+}> {
+  return api<{ cases: DisposedCase[] }>("/api/app/cases/disposed", {
+    method: "GET",
+  });
+}
+
+/* ─── Case documents (GridFS) ────────────────────────────────────────── */
+
+export type CaseDocumentDTO = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadedByName: string;
+  uploadedByUserId: string | null;
+  createdAt: string;
+};
+
+export async function partnerListCaseDocuments(
+  caseId: string
+): Promise<{ documents: CaseDocumentDTO[] }> {
+  return api(`/api/app/cases/${caseId}/documents`, { method: "GET" });
+}
+
+/** Streaming/download path for a stored document. `download` switches the
+ *  server's Content-Disposition from inline (preview) to attachment. */
+export function caseDocumentPath(
+  caseId: string,
+  docId: string,
+  opts?: { download?: boolean }
+): string {
+  return `/api/app/cases/${caseId}/documents/${docId}${
+    opts?.download ? "?download=1" : ""
+  }`;
+}
+
+// Delete uses the same smart-delete flow as cases/clients: non-admins get
+// a 403 with code delete_request_required (targetType "case_document") —
+// read it with deleteRequestRequired() and offer the request-delete sheet.
+export async function partnerDeleteCaseDocument(
+  caseId: string,
+  docId: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/cases/${caseId}/documents/${docId}`, {
+    method: "DELETE",
+  });
+}
+
+/* ─── Senior Desk: chat ──────────────────────────────────────────────── */
+
+export type ChatRoomDTO = {
+  id: string;
+  type: "group" | "private";
+  title: string;
+  // Private rooms: the OTHER party. Group room: null.
+  otherUser: {
+    id: string;
+    name: string;
+    role: string;
+    active: boolean;
+  } | null;
+  lastMessageAt: string | null;
+  lastMessagePreview: string;
+  lastMessageAuthorId: string | null;
+  unreadCount: number;
+};
+
+export type ChatMessageDTO = {
+  id: string;
+  roomId: string;
+  senderId: string | null;
+  senderName: string;
+  senderRole: string;
+  body: string;
+  type: "text" | "system";
+  isDeleted: boolean;
+  editedAt: string | null;
+  createdAt: string;
+  isMine: boolean;
+};
+
+export const CHAT_MAX_BODY = 4000;
+
+export async function partnerChatRooms(): Promise<{
+  rooms: ChatRoomDTO[];
+  totalUnread: number;
+}> {
+  return api("/api/app/chat/rooms", { method: "GET" });
+}
+
+export async function partnerChatStartPrivate(
+  withUserId: string
+): Promise<{ ok: true; room: ChatRoomDTO }> {
+  return api("/api/app/chat/private", {
+    method: "POST",
+    body: JSON.stringify({ withUserId }),
+  });
+}
+
+// Oldest-first page of up to `limit` messages strictly BEFORE the cursor
+// (newest `limit` when no cursor) — render top-to-bottom without reversing.
+export async function partnerChatMessages(
+  roomId: string,
+  opts?: { before?: string; limit?: number }
+): Promise<{
+  messages: ChatMessageDTO[];
+  hasMore: boolean;
+  room: { id: string; type: "group" | "private"; title: string };
+}> {
+  const qs = new URLSearchParams();
+  if (opts?.before) qs.set("before", opts.before);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString();
+  return api(
+    `/api/app/chat/rooms/${roomId}/messages${suffix ? `?${suffix}` : ""}`,
+    { method: "GET" }
+  );
+}
+
+export async function partnerChatSend(
+  roomId: string,
+  body: string
+): Promise<{ ok: true; message: ChatMessageDTO }> {
+  return api(`/api/app/chat/rooms/${roomId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function partnerChatEditMessage(
+  messageId: string,
+  body: string
+): Promise<{ ok: true; message: { body: string; editedAt: string | null } }> {
+  return api(`/api/app/chat/messages/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function partnerChatDeleteMessage(
+  messageId: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/chat/messages/${messageId}`, { method: "DELETE" });
+}
+
+// Marks the room read up to messageId (or the room's newest when omitted).
+export async function partnerChatMarkRead(
+  roomId: string,
+  messageId?: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/chat/rooms/${roomId}/read`, {
+    method: "POST",
+    body: JSON.stringify(messageId ? { messageId } : {}),
+  });
+}
+
+export async function partnerChatUnread(): Promise<{
+  totalUnread: number;
+  groupUnread: number;
+  privateUnread: number;
+  byRoomId: Record<string, number>;
+}> {
+  return api("/api/app/chat/unread", { method: "GET" });
+}
+
+/* ─── Senior Desk: reminders ─────────────────────────────────────────── */
+
+export type ReminderPriority = "low" | "normal" | "high";
+
+export type ReminderBucket =
+  | "mine_active"
+  | "mine_done"
+  | "office_active" // admin-only
+  | "office_done"; // admin-only
+
+export type ReminderDTO = {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string | null;
+  priority: ReminderPriority;
+  assignedToUserId: string;
+  assignedToName: string;
+  createdByUserId: string;
+  createdByName: string;
+  status: "pending" | "done";
+  completedAt: string | null;
+  isMine: boolean;
+  isOverdue: boolean;
+  isDueToday: boolean;
+  createdAt: string;
+};
+
+export async function partnerListReminders(
+  bucket: ReminderBucket
+): Promise<{ reminders: ReminderDTO[]; dueOrOverdueCount: number }> {
+  return api(`/api/app/reminders?bucket=${bucket}`, { method: "GET" });
+}
+
+export async function partnerCreateReminder(payload: {
+  title: string;
+  description?: string;
+  dueDate?: string | null;
+  priority?: ReminderPriority;
+  assignedToUserId?: string; // defaults to the caller on the server
+}): Promise<{ ok: true; reminder: ReminderDTO }> {
+  return api("/api/app/reminders", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Status toggle: assignee/creator/admin. Other fields: creator/admin.
+export async function partnerUpdateReminder(
+  id: string,
+  payload: Partial<{
+    title: string;
+    description: string;
+    dueDate: string | null;
+    priority: ReminderPriority;
+    assignedToUserId: string;
+    status: "pending" | "done";
+  }>
+): Promise<{ ok: true; reminder: ReminderDTO }> {
+  return api(`/api/app/reminders/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerDeleteReminder(
+  id: string
+): Promise<{ ok: true }> {
+  return api(`/api/app/reminders/${id}`, { method: "DELETE" });
+}
+
+/* ─── Attendance (office admin) ──────────────────────────────────────── */
+
+export type AttendanceStatus =
+  | "present"
+  | "absent"
+  | "half_day"
+  | "leave"
+  | "holiday";
+
+export type AttendanceUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isYou: boolean;
+};
+
+export type AttendanceRecord = {
+  id: string;
+  userId: string;
+  date: string;
+  status: AttendanceStatus;
+  note: string;
+  markedByName: string;
+  markedAt: string;
+};
+
+export type AttendanceUserSummary = {
+  present: number;
+  absent: number;
+  halfDay: number;
+  leave: number;
+  holiday: number;
+  attendancePct: number;
+};
+
+export type AttendanceMonth = {
+  month: string; // "YYYY-MM"
+  totalDays: number;
+  daysSoFar: number;
+  users: AttendanceUser[];
+  records: AttendanceRecord[];
+  summary: {
+    perUser: Record<string, AttendanceUserSummary>;
+    office: {
+      avgAttendancePct: number;
+      totalUsers: number;
+      totalMarked: number;
+      totalPossible: number;
+    };
+  };
+  isAdmin: boolean;
+};
+
+export async function partnerGetAttendance(
+  month?: string // "YYYY-MM", defaults to the current month server-side
+): Promise<AttendanceMonth> {
+  const suffix = month ? `?month=${month}` : "";
+  return api(`/api/app/attendance${suffix}`, { method: "GET" });
+}
+
+// Admin-only. An empty-string status CLEARS the day's mark. Future dates
+// are rejected server-side (IST midnight boundary).
+export async function partnerMarkAttendance(payload: {
+  userId: string;
+  date: string;
+  status: AttendanceStatus | "";
+  note?: string;
+}): Promise<
+  | { ok: true; cleared: true }
+  | {
+      ok: true;
+      record: Omit<AttendanceRecord, "markedByName">;
+    }
+> {
+  return api("/api/app/attendance", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ─── Office settings ────────────────────────────────────────────────── */
+
+export type OfficeSettings = {
+  // null = keep forever; otherwise prune activity older than N days.
+  activityRetentionDays: 90 | 365 | null;
+};
+
+export async function partnerGetSettings(): Promise<{
+  settings: OfficeSettings;
+}> {
+  return api("/api/app/settings", { method: "GET" });
+}
+
+// Admin-only on the server.
+export async function partnerUpdateSettings(
+  payload: Partial<OfficeSettings>
+): Promise<{ ok: true; settings: OfficeSettings }> {
+  return api("/api/app/settings", {
     method: "PATCH",
     body: JSON.stringify(payload),
   });

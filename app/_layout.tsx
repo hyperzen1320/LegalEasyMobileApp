@@ -41,9 +41,17 @@ import {
 } from "@expo-google-fonts/dm-mono";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { View } from "react-native";
+import { useEffect } from "react";
 import { AuthProvider } from "../lib/auth-context";
+import { applyOrientationPolicy } from "../lib/orientation";
 
 export default function RootLayout() {
+  // Phones lock portrait, tablets rotate freely — runtime-applied because
+  // Expo Go ignores app.json's static orientation field.
+  useEffect(() => {
+    applyOrientationPolicy();
+  }, []);
+
   const [fontsLoaded] = useFonts({
     // Editorial Gravitas
     "Fraunces-Medium": Fraunces_500Medium,

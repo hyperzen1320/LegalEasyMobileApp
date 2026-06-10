@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -13,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import { FlashList } from "@shopify/flash-list";
 import { partnerListCases, type PartnerCase } from "../../../lib/api";
 
 export default function CaseVault() {
@@ -115,53 +115,63 @@ export default function CaseVault() {
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
-          <ScrollView
-            contentContainerClassName="px-5 pt-3 pb-6"
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+          // FlashList recycles rows, so the entrance stagger lives on the
+          // list container — per-row `entering` would replay on recycle.
+          <Animated.View
+            entering={FadeInDown.duration(380)}
+            className="flex-1"
           >
-            {error ? (
-              <View className="rounded-md border border-app-danger/30 bg-app-danger-soft px-4 py-3 mb-4">
-                <Text
-                  className="text-[13px] text-app-fg"
-                  style={{ fontFamily: "Manrope" }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {cases.length === 0 ? (
-              <EmptyVault onAdd={() => router.push("/(home)/cases/new")} />
-            ) : filtered.length === 0 ? (
-              <NoMatches query={query} onClear={() => setQuery("")} />
-            ) : (
-              <View className="gap-3">
-                {filtered.map((c, i) => (
-                  <Animated.View
-                    key={c.id}
-                    entering={FadeInDown.duration(380).delay(
-                      Math.min(i, 10) * 35
-                    )}
-                  >
-                    <CaseCard c={c} />
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-          </ScrollView>
+            <FlashList
+              data={filtered}
+              keyExtractor={(c) => c.id}
+              renderItem={({ item }) => <CaseCard c={item} />}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 12,
+                paddingBottom: 24,
+              }}
+              ItemSeparatorComponent={RowGap}
+              ListHeaderComponent={
+                error ? (
+                  <View className="rounded-md border border-app-danger/30 bg-app-danger-soft px-4 py-3 mb-4">
+                    <Text
+                      className="text-[13px] text-app-fg"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      {error}
+                    </Text>
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                cases.length === 0 ? (
+                  <EmptyVault
+                    onAdd={() => router.push("/(home)/cases/new")}
+                  />
+                ) : (
+                  <NoMatches query={query} onClear={() => setQuery("")} />
+                )
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#c5853a"
+                />
+              }
+            />
+          </Animated.View>
         )}
       </SafeAreaView>
     </View>
   );
+}
+
+function RowGap() {
+  return <View style={{ height: 12 }} />;
 }
 
 function TopBar({ count }: { count: number }) {

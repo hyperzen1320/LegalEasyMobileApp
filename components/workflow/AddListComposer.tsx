@@ -2,17 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
-const LIST_WIDTH = 280;
+const DEFAULT_LIST_WIDTH = 280;
 
 /**
  * "+ Add list" tile that lives at the end of the horizontal lane row.
- * Tap once to inflate into an inline input + Add/Cancel.
+ * Tap once to inflate into an inline input + Add/Cancel. `width` follows
+ * the board's adaptive column width so the tile lines up with real lists.
  */
 export default function AddListComposer({
   accent,
+  width = DEFAULT_LIST_WIDTH,
   onSubmit,
 }: {
   accent: string;
+  width?: number;
   onSubmit: (title: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -44,7 +47,7 @@ export default function AddListComposer({
         onPress={() => setOpen(true)}
         className="active:opacity-70 items-center justify-center"
         style={{
-          width: LIST_WIDTH,
+          width,
           minHeight: 100,
           borderRadius: 14,
           backgroundColor: "rgba(255,255,255,0.6)",
@@ -84,7 +87,7 @@ export default function AddListComposer({
   return (
     <View
       style={{
-        width: LIST_WIDTH,
+        width,
         backgroundColor: "rgba(255,255,255,0.92)",
         borderRadius: 14,
         padding: 12,

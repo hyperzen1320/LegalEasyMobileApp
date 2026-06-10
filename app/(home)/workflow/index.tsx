@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -11,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -123,73 +123,87 @@ export default function Workflow() {
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
-          <ScrollView
-            contentContainerClassName="px-5 pt-3 pb-12"
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+          // FlashList recycles rows — error + create-tile ride as the
+          // header; entrance animation lives on the container.
+          <Animated.View
+            entering={FadeInDown.duration(380)}
+            className="flex-1"
           >
-            {error ? (
-              <View
-                className="rounded-md px-4 py-3 mb-4"
-                style={{ backgroundColor: "#f6dccd" }}
-              >
-                <Text
-                  className="text-[13px]"
-                  style={{ fontFamily: "Manrope", color: "#c14a37" }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Create new tile + boards */}
-            <View className="gap-4">
-              <CreateTile onPress={() => setCreating(true)} />
-              {filtered.map((b, i) => (
-                <Animated.View
-                  key={b.id}
-                  entering={FadeInDown.duration(380).delay(
-                    Math.min(i, 10) * 35
-                  )}
-                >
-                  <BoardTile board={b} onOpen={() => router.push(`/(home)/workflow/${b.id}` as never)} />
-                </Animated.View>
-              ))}
-              {filtered.length === 0 && query ? (
-                <View
-                  className="rounded-xl px-5 py-10 items-center"
-                  style={{
-                    backgroundColor: "#ffffff",
-                    borderWidth: 1,
-                    borderColor: "#e3d9c0",
-                    borderStyle: "dashed",
-                  }}
-                >
-                  <Feather name="search" size={20} color="#a89c80" />
-                  <Text
-                    className="mt-3 text-[13px] text-app-fg-muted text-center"
-                    style={{ fontFamily: "Manrope" }}
-                  >
-                    No matches for{" "}
-                    <Text
-                      style={{
-                        fontFamily: "Manrope-SemiBold",
-                        color: "#0a1124",
-                      }}
+            <FlashList
+              data={filtered}
+              keyExtractor={(b) => b.id}
+              renderItem={({ item }) => (
+                <BoardTile
+                  board={item}
+                  onOpen={() =>
+                    router.push(`/(home)/workflow/${item.id}` as never)
+                  }
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 12,
+                paddingBottom: 48,
+              }}
+              ItemSeparatorComponent={TileGap}
+              ListHeaderComponent={
+                <View>
+                  {error ? (
+                    <View
+                      className="rounded-md px-4 py-3 mb-4"
+                      style={{ backgroundColor: "#f6dccd" }}
                     >
-                      “{query}”
-                    </Text>
-                  </Text>
+                      <Text
+                        className="text-[13px]"
+                        style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                      >
+                        {error}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <CreateTile onPress={() => setCreating(true)} />
+                  <View style={{ height: 16 }} />
                 </View>
-              ) : null}
-            </View>
-          </ScrollView>
+              }
+              ListEmptyComponent={
+                query ? (
+                  <View
+                    className="rounded-xl px-5 py-10 items-center"
+                    style={{
+                      backgroundColor: "#ffffff",
+                      borderWidth: 1,
+                      borderColor: "#e3d9c0",
+                      borderStyle: "dashed",
+                    }}
+                  >
+                    <Feather name="search" size={20} color="#a89c80" />
+                    <Text
+                      className="mt-3 text-[13px] text-app-fg-muted text-center"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      No matches for{" "}
+                      <Text
+                        style={{
+                          fontFamily: "Manrope-SemiBold",
+                          color: "#0a1124",
+                        }}
+                      >
+                        “{query}”
+                      </Text>
+                    </Text>
+                  </View>
+                ) : null
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#c5853a"
+                />
+              }
+            />
+          </Animated.View>
         )}
       </SafeAreaView>
 
@@ -375,6 +389,10 @@ function BoardTile({
       </View>
     </Pressable>
   );
+}
+
+function TileGap() {
+  return <View style={{ height: 16 }} />;
 }
 
 function CreateTile({ onPress }: { onPress: () => void }) {

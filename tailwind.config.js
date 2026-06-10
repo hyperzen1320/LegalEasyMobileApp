@@ -6,6 +6,14 @@ module.exports = {
   ],
   presets: [require("nativewind/preset")],
   theme: {
+    // Window-size classes — keep in lockstep with lib/useBreakpoint.ts
+    // (sm = medium cut, md = expanded cut). Prefixes handle cosmetic
+    // responsive changes; the hook handles structural ones.
+    screens: {
+      sm: "600px",
+      md: "840px",
+      lg: "1240px",
+    },
     extend: {
       colors: {
         // Editorial Gravitas — landing/auth/dashboard
