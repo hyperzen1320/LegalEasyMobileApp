@@ -408,6 +408,11 @@ export type PartnerCase = {
   disposalRemarks: string;
   createdAt: string;
   updatedAt: string;
+  // Present on list rows (the detail serializer omits some of these).
+  courtId?: string | null;
+  courtNumber?: string;
+  advocateId?: string | null;
+  advocateName?: string;
 };
 
 export type PartnerCaseInput = {
@@ -455,8 +460,40 @@ export async function partnerDashboard(): Promise<PartnerDashboardData> {
   return api<PartnerDashboardData>("/api/app/dashboard", { method: "GET" });
 }
 
-export async function partnerListCases(): Promise<{ cases: PartnerCase[] }> {
-  return api<{ cases: PartnerCase[] }>("/api/app/cases", { method: "GET" });
+/** Server-side Case Vault filters — same param names as the web toolbar
+ *  and the export endpoint (case-filter.ts). */
+export type CaseListFilters = {
+  courtId?: string;
+  courtPlace?: string;
+  advocateId?: string;
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  search?: string;
+};
+
+export async function partnerListCases(opts?: {
+  filters?: CaseListFilters;
+  page?: number;
+  limit?: number;
+}): Promise<{
+  cases: PartnerCase[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}> {
+  const qs = new URLSearchParams();
+  if (opts?.filters) {
+    for (const [k, v] of Object.entries(opts.filters)) {
+      if (typeof v === "string" && v.trim()) qs.set(k, v.trim());
+    }
+  }
+  if (opts?.page) qs.set("page", String(opts.page));
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString();
+  return api(`/api/app/cases${suffix ? `?${suffix}` : ""}`, {
+    method: "GET",
+  });
 }
 
 export async function partnerCreateCase(

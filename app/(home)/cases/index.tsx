@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,14 +13,25 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { FlashList } from "@shopify/flash-list";
-import { partnerListCases, type PartnerCase } from "../../../lib/api";
+import {
+  partnerListCases,
+  type CaseListFilters,
+  type PartnerCase,
+} from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import ExportSheet from "../../../components/ExportSheet";
+import CaseFilterSheet, {
+  countActive,
+  type CaseFilterLabels,
+} from "../../../components/cases/CaseFilterSheet";
+import { formatDateForDisplay } from "../../../components/CaseFields";
 import {
   CASE_EXPORT_COLUMNS,
   CASE_EXPORT_DEFAULT_KEYS,
   exportCases,
 } from "../../../lib/exports";
+
+const PAGE_SIZE = 50;
 
 export default function CaseVault() {
   const router = useRouter();
@@ -29,64 +40,154 @@ export default function CaseVault() {
   // carry staff roles, so staff-admins export from the web).
   const { isPartnerAdmin } = useAuth();
   const [cases, setCases] = useState<PartnerCase[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // Debounced copy of the search box — this is what actually hits the
+  // server (the list, like the web vault, filters server-side).
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<CaseListFilters>({});
+  const [filterLabels, setFilterLabels] = useState<CaseFilterLabels>({});
+  const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await partnerListCases();
-      setCases(data.cases);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-  }, []);
+  const pageRef = useRef(1);
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
-    (async () => {
-      await load();
-      setLoading(false);
-    })();
+    const t = setTimeout(() => setSearch(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const params = useMemo<CaseListFilters>(
+    () => ({ ...filters, search: search || undefined }),
+    [filters, search]
+  );
+
+  const load = useCallback(
+    async (mode: "reset" | "more") => {
+      const myReq = ++reqIdRef.current;
+      const page = mode === "more" ? pageRef.current + 1 : 1;
+      try {
+        const data = await partnerListCases({
+          filters: params,
+          page,
+          limit: PAGE_SIZE,
+        });
+        if (myReq !== reqIdRef.current) return; // params changed mid-flight
+        pageRef.current = data.page;
+        setTotal(data.total);
+        setHasMore(data.hasMore);
+        setCases((prev) =>
+          mode === "more" ? [...prev, ...data.cases] : data.cases
+        );
+        setError(null);
+      } catch (err) {
+        if (myReq !== reqIdRef.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load");
+      }
+    },
+    [params]
+  );
+
+  // Boot + every search/filter change.
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    load("reset").finally(() => {
+      if (alive) setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
   }, [load]);
 
+  // Silent refresh when returning to the tab (a hearing may have been
+  // updated from a detail screen).
   useFocusEffect(
     useCallback(() => {
-      load();
+      load("reset");
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await load("reset");
     setRefreshing(false);
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return cases;
-    return cases.filter((c) => {
-      return (
-        c.caseNo.toLowerCase().includes(q) ||
-        c.fileNo.toLowerCase().includes(q) ||
-        (c.cnr || "").toLowerCase().includes(q) ||
-        (c.clientName || "").toLowerCase().includes(q) ||
-        (c.oppositeParty || "").toLowerCase().includes(q) ||
-        (c.courtName || "").toLowerCase().includes(q) ||
-        (c.courtPlace || "").toLowerCase().includes(q) ||
-        (c.status || "").toLowerCase().includes(q)
-      );
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loading || loadingMore || refreshing) return;
+    setLoadingMore(true);
+    await load("more");
+    setLoadingMore(false);
+  }, [hasMore, loading, loadingMore, refreshing, load]);
+
+  const activeFilterCount = countActive(filters);
+
+  const clearFilter = (key: keyof CaseListFilters) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
     });
-  }, [cases, query]);
+  };
+
+  // Date-range chip collapses both bounds into one label.
+  const filterChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (filters.courtPlace) {
+      chips.push({
+        key: "courtPlace",
+        label: filters.courtPlace,
+        clear: () => clearFilter("courtPlace"),
+      });
+    }
+    if (filters.courtId) {
+      chips.push({
+        key: "courtId",
+        label: filterLabels.courtId ?? "Court",
+        clear: () => clearFilter("courtId"),
+      });
+    }
+    if (filters.advocateId) {
+      chips.push({
+        key: "advocateId",
+        label: filterLabels.advocateId ?? "Filed by",
+        clear: () => clearFilter("advocateId"),
+      });
+    }
+    if (filters.fromDate || filters.toDate) {
+      const from = filters.fromDate
+        ? formatDateForDisplay(filters.fromDate)
+        : "…";
+      const to = filters.toDate ? formatDateForDisplay(filters.toDate) : "…";
+      chips.push({
+        key: "dates",
+        label: `${from} → ${to}`,
+        clear: () => {
+          setFilters((prev) => {
+            const next = { ...prev };
+            delete next.fromDate;
+            delete next.toDate;
+            return next;
+          });
+        },
+      });
+    }
+    return chips;
+  }, [filters, filterLabels]);
 
   return (
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
         <TopBar
-          count={cases.length}
+          count={total}
           onExport={isPartnerAdmin ? () => setExporting(true) : null}
         />
 
@@ -122,7 +223,73 @@ export default function CaseVault() {
                 <Feather name="x" size={15} color="#8a5821" />
               </Pressable>
             ) : null}
+            <Pressable
+              onPress={() => setFilterOpen(true)}
+              hitSlop={8}
+              className="active:opacity-60 flex-row items-center gap-1 pl-2"
+              style={{
+                borderLeftWidth: 1,
+                borderLeftColor: "#efe5d0",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Filter cases"
+            >
+              <Feather
+                name="sliders"
+                size={15}
+                color={activeFilterCount > 0 ? "#8a5821" : "#a89c80"}
+              />
+              {activeFilterCount > 0 ? (
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{
+                    minWidth: 15,
+                    height: 15,
+                    backgroundColor: "#c5853a",
+                    paddingHorizontal: 3,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "DMMono-Medium",
+                      fontSize: 9,
+                      color: "#2a1c08",
+                    }}
+                  >
+                    {activeFilterCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
           </View>
+
+          {/* Active filter chips */}
+          {filterChips.length > 0 ? (
+            <View className="flex-row flex-wrap mt-2" style={{ gap: 6 }}>
+              {filterChips.map((chip) => (
+                <Pressable
+                  key={chip.key}
+                  onPress={chip.clear}
+                  className="flex-row items-center gap-1.5 rounded-full px-2.5 active:opacity-70"
+                  style={{
+                    paddingVertical: 4,
+                    backgroundColor: "#efe5d0",
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Clear filter ${chip.label}`}
+                >
+                  <Text
+                    className="text-[11px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#4d4538" }}
+                    numberOfLines={1}
+                  >
+                    {chip.label}
+                  </Text>
+                  <Feather name="x" size={11} color="#8a5821" />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {loading ? (
@@ -137,12 +304,14 @@ export default function CaseVault() {
             className="flex-1"
           >
             <FlashList
-              data={filtered}
+              data={cases}
               keyExtractor={(c) => c.id}
               renderItem={({ item }) => <CaseCard c={item} />}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.4}
               contentContainerStyle={{
                 paddingHorizontal: 20,
                 paddingTop: 12,
@@ -161,13 +330,26 @@ export default function CaseVault() {
                   </View>
                 ) : null
               }
+              ListFooterComponent={
+                loadingMore ? (
+                  <View className="items-center py-5">
+                    <ActivityIndicator color="#c5853a" size="small" />
+                  </View>
+                ) : null
+              }
               ListEmptyComponent={
-                cases.length === 0 ? (
+                search || activeFilterCount > 0 ? (
+                  <NoMatches
+                    query={search || "filters"}
+                    onClear={() => {
+                      setQuery("");
+                      setFilters({});
+                    }}
+                  />
+                ) : (
                   <EmptyVault
                     onAdd={() => router.push("/(home)/cases/new")}
                   />
-                ) : (
-                  <NoMatches query={query} onClear={() => setQuery("")} />
                 )
               }
               refreshControl={
@@ -188,9 +370,9 @@ export default function CaseVault() {
         eyebrow="Case Vault"
         title="Export the case rolls"
         contextLine={
-          query.trim()
-            ? `Filtered — “${query.trim()}”`
-            : `All active matters · ${cases.length}`
+          activeFilterCount > 0 || search
+            ? `Current view · ${total} matters (filters carry into the file)`
+            : `All active matters · ${total}`
         }
         columns={{
           // "Disposed On" is always empty on the active vault; the
@@ -199,11 +381,18 @@ export default function CaseVault() {
           defaultKeys: CASE_EXPORT_DEFAULT_KEYS,
         }}
         run={(format, columnKeys) =>
-          exportCases(format, {
-            filters: query.trim() ? { search: query.trim() } : {},
-            columns: columnKeys,
-          })
+          exportCases(format, { filters: params, columns: columnKeys })
         }
+      />
+
+      <CaseFilterSheet
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={filters}
+        onApply={(next, labels) => {
+          setFilters(next);
+          setFilterLabels(labels);
+        }}
       />
     </View>
   );
@@ -221,6 +410,7 @@ function TopBar({
   onExport?: (() => void) | null;
 }) {
   const router = useRouter();
+  const onArchive = () => router.push("/(home)/cases/disposed" as never);
   return (
     <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between">
       <View>
@@ -247,6 +437,23 @@ function TopBar({
           ) : null}
         </View>
       </View>
+      <Pressable
+        onPress={onArchive}
+        hitSlop={6}
+        className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+        style={{
+          height: 36,
+          width: 36,
+          backgroundColor: "#ffffff",
+          borderWidth: 1,
+          borderColor: "#e3d9c0",
+          marginLeft: "auto",
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Disposed cases archive"
+      >
+        <Feather name="archive" size={15} color="#8a5821" />
+      </Pressable>
       {onExport ? (
         <Pressable
           onPress={onExport}
@@ -258,7 +465,6 @@ function TopBar({
             backgroundColor: "#ffffff",
             borderWidth: 1,
             borderColor: "#e3d9c0",
-            marginLeft: "auto",
           }}
           accessibilityRole="button"
           accessibilityLabel="Export case rolls"
