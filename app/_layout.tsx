@@ -1,4 +1,6 @@
 import "../global.css";
+import "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import {
@@ -85,19 +87,21 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "#f4ecda" },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(admin)" options={{ animation: "fade" }} />
-          <Stack.Screen name="(home)" options={{ animation: "fade" }} />
-        </Stack>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "#f4ecda" },
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(admin)" options={{ animation: "fade" }} />
+            <Stack.Screen name="(home)" options={{ animation: "fade" }} />
+          </Stack>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

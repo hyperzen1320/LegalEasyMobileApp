@@ -40,6 +40,12 @@ import AddListComposer from "../../../../components/workflow/AddListComposer";
 import EdgePill from "../../../../components/workflow/EdgePill";
 import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import {
+  useBoardDnd,
+  DropIndicator,
+} from "../../../../components/workflow/dnd/useBoardDnd";
 import { useBreakpoint } from "../../../../lib/useBreakpoint";
 import BoardExportSheet from "../../../../components/workflow/BoardExportSheet";
 import BoardSettingsSheet from "../../../../components/workflow/BoardSettingsSheet";
@@ -203,10 +209,17 @@ export default function BoardDetail() {
     }
     if (!needsResync) return;
     if (resyncTimer.current) return;
-    resyncTimer.current = setTimeout(() => {
+    const fire = () => {
+      // Mid-drag, defer — a refetch re-renders the columns under the
+      // finger. Re-arm until the drop lands.
+      if (isDraggingRef.current) {
+        resyncTimer.current = setTimeout(fire, 800);
+        return;
+      }
       resyncTimer.current = null;
       load();
-    }, 800);
+    };
+    resyncTimer.current = setTimeout(fire, 800);
   }, [live.newRows, data?.currentUserId, load]);
 
   // Pending delete-requests badge (admin only effectively)
@@ -271,6 +284,70 @@ export default function BoardDetail() {
     for (const l of data.lists) m.set(l.id, l.title);
     return m;
   }, [data]);
+
+  const sortedLists = useMemo(
+    () => (data ? data.lists.slice().sort((a, b) => a.sortOrder - b.sortOrder) : []),
+    [data]
+  );
+
+  /* ─── Drag & drop ─── */
+
+  // Precise optimistic move (with index) — the drag counterpart of the
+  // sheet's moveCard. Re-sequences sortOrder locally exactly the way the
+  // server will, then reconciles or rolls back.
+  const moveCardTo = useCallback(
+    async (taskId: string, toListId: string, toIndex: number) => {
+      if (!data || isTemp(taskId) || isTemp(toListId)) return;
+      const snapshot = data;
+      setData((prev) => {
+        if (!prev) return prev;
+        const t = prev.tasks.find((x) => x.id === taskId);
+        if (!t) return prev;
+        const without = prev.tasks.filter((x) => x.id !== taskId);
+        const target = without
+          .filter((x) => x.listId === toListId)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        target.splice(Math.min(toIndex, target.length), 0, {
+          ...t,
+          listId: toListId,
+        });
+        const reseqTarget = target.map((x, i) => ({ ...x, sortOrder: i }));
+        let rest = without.filter((x) => x.listId !== toListId);
+        if (t.listId !== toListId) {
+          const src = rest
+            .filter((x) => x.listId === t.listId)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((x, i) => ({ ...x, sortOrder: i }));
+          rest = [...rest.filter((x) => x.listId !== t.listId), ...src];
+        }
+        return { ...prev, tasks: [...rest, ...reseqTarget] };
+      });
+      try {
+        await partnerMoveTask(taskId, { toListId, toIndex });
+      } catch (err) {
+        setData(snapshot);
+        Alert.alert(
+          "Couldn't move card",
+          err instanceof ApiError ? err.message : "Try again."
+        );
+      }
+    },
+    [data]
+  );
+
+  const dnd = useBoardDnd({
+    listWidth,
+    screenWidth: windowWidth,
+    lists: sortedLists,
+    tasksByList,
+    isTemp,
+    onMove: moveCardTo,
+  });
+
+  // Cross-user resyncs mid-drag would yank the board out from under the
+  // finger — hold them until the drop lands.
+  const isDraggingRef = useRef(false);
+  isDraggingRef.current = dnd.isDragging;
 
   /* ─── Mutations: optimistic ─── */
   const addList = useCallback(
@@ -489,13 +566,20 @@ export default function BoardDetail() {
             </Pressable>
           </View>
         ) : (
-          <ScrollView
+          <Animated.ScrollView
+            ref={dnd.hScrollRef}
+            onScroll={dnd.hScrollHandler}
+            scrollEventThrottle={16}
+            scrollEnabled={!dnd.isDragging}
             horizontal
             showsHorizontalScrollIndicator={false}
             decelerationRate="fast"
             // Free scroll once three-plus columns fit; snapping fights
             // the user when the viewport already shows several lists.
-            snapToInterval={isExpanded ? undefined : listWidth + 12}
+            // Snapping also pauses mid-drag so autoscroll lands cleanly.
+            snapToInterval={
+              isExpanded || dnd.isDragging ? undefined : listWidth + 12
+            }
             snapToAlignment="start"
             contentContainerStyle={{
               paddingHorizontal: 16,
@@ -511,32 +595,30 @@ export default function BoardDetail() {
               />
             }
           >
-            {data!.lists
-              .slice()
-              .sort((a, b) => a.sortOrder - b.sortOrder)
-              .map((list) => (
-                <ListColumn
-                  key={list.id}
-                  list={list}
-                  listWidth={listWidth}
-                  tasks={tasksByList.get(list.id) || []}
-                  edges={
-                    edgesByList.get(list.id) || {
-                      incoming: [],
-                      outgoing: [],
-                    }
+            {sortedLists.map((list) => (
+              <ListColumn
+                key={list.id}
+                list={list}
+                listWidth={listWidth}
+                tasks={tasksByList.get(list.id) || []}
+                edges={
+                  edgesByList.get(list.id) || {
+                    incoming: [],
+                    outgoing: [],
                   }
-                  listTitleById={listTitleById}
-                  accent={styles.accent}
-                  onAddCard={(title) => addCard(list.id, title)}
-                  onCardPress={(task) =>
-                    router.push(
-                      `/(home)/workflow/${boardId}/card/${task.id}` as never
-                    )
-                  }
-                  onCardLongPress={(task) => setActiveCard(task)}
-                />
-              ))}
+                }
+                listTitleById={listTitleById}
+                accent={styles.accent}
+                dnd={dnd}
+                onAddCard={(title) => addCard(list.id, title)}
+                onCardPress={(task) =>
+                  router.push(
+                    `/(home)/workflow/${boardId}/card/${task.id}` as never
+                  )
+                }
+                onCardLongPress={(task) => setActiveCard(task)}
+              />
+            ))}
             <AddListComposer
               accent={styles.accent}
               width={listWidth}
@@ -544,7 +626,7 @@ export default function BoardDetail() {
             />
             {/* trailing spacer so the last list doesn't sit flush with the edge */}
             <View style={{ width: 4 }} />
-          </ScrollView>
+          </Animated.ScrollView>
         )}
       </SafeAreaView>
 
@@ -647,6 +729,9 @@ export default function BoardDetail() {
           </View>
         </>
       ) : null}
+
+      {/* Drag clone — floats above everything while a card is in hand */}
+      {dnd.overlay}
     </View>
   );
 }
@@ -842,6 +927,7 @@ function ListColumn({
   edges,
   listTitleById,
   accent,
+  dnd,
   onAddCard,
   onCardPress,
   onCardLongPress,
@@ -852,12 +938,18 @@ function ListColumn({
   edges: { incoming: CanvasEdge[]; outgoing: CanvasEdge[] };
   listTitleById: Map<string, string>;
   accent: string;
+  dnd: ReturnType<typeof useBoardDnd>;
   onAddCard: (title: string) => void;
   onCardPress: (task: PreviewTask) => void;
   onCardLongPress: (task: PreviewTask) => void;
 }) {
   const stripe = list.color || accent;
   const isPending = isTemp(list.id);
+  const bodyRef = useRef<ScrollView | null>(null);
+  const dropHere =
+    dnd.dropTarget && dnd.dropTarget.listId === list.id
+      ? dnd.dropTarget.index
+      : null;
 
   return (
     <View
@@ -934,6 +1026,29 @@ function ListColumn({
 
       {/* Cards body — scrolls vertically inside the list */}
       <ScrollView
+        ref={(r) => {
+          bodyRef.current = r;
+          dnd.setColumnScrollRef(list.id, r);
+        }}
+        onLayout={(e) => {
+          dnd.setColumnViewportH(list.id, e.nativeEvent.layout.height);
+          // Window-space top for the drag hit-test (Y never changes with
+          // horizontal scrolling, so one measure per layout is enough).
+          // ScrollView's TS type hides NativeMethods; the host component
+          // has them at runtime.
+          (
+            bodyRef.current as unknown as
+              | { measureInWindow(cb: (x: number, y: number) => void): void }
+              | null
+          )?.measureInWindow((_x: number, y: number) =>
+            dnd.setColumnWindowTop(list.id, y)
+          );
+        }}
+        onScroll={(e) =>
+          dnd.onColumnScroll(list.id, e.nativeEvent.contentOffset.y)
+        }
+        scrollEventThrottle={16}
+        scrollEnabled={!dnd.isDragging}
         style={{ maxHeight: 480 }}
         contentContainerStyle={{
           paddingHorizontal: 8,
@@ -966,14 +1081,59 @@ function ListColumn({
             </Text>
           </View>
         ) : (
-          tasks.map((t) => (
-            <CardItem
-              key={t.id}
-              task={t}
-              onPress={() => onCardPress(t)}
-              onLongPress={() => onCardLongPress(t)}
-            />
-          ))
+          (() => {
+            // The hit-test indexes cards EXCLUDING the dragged one, so
+            // indicator placement walks the same exclusive sequence.
+            const dragId = dnd.draggingTaskId;
+            let exclusive = 0;
+            const nodes = tasks.map((t) => {
+              const isDragged = t.id === dragId;
+              const showBefore = !isDragged && dropHere === exclusive;
+              const node = (
+                <View
+                  key={t.id}
+                  // y is relative to the scroll content — exactly the
+                  // space the hit-test works in.
+                  onLayout={(e) =>
+                    dnd.registerCardLayout(
+                      list.id,
+                      t.id,
+                      e.nativeEvent.layout.y,
+                      e.nativeEvent.layout.height
+                    )
+                  }
+                >
+                  {showBefore ? (
+                    <View style={{ marginBottom: 6 }}>
+                      <DropIndicator />
+                    </View>
+                  ) : null}
+                  <GestureDetector gesture={dnd.makeGesture(t)}>
+                    <View
+                      collapsable={false}
+                      style={{ opacity: isDragged ? 0.35 : 1 }}
+                    >
+                      <CardItem
+                        task={t}
+                        onPress={() => onCardPress(t)}
+                        onMore={() => onCardLongPress(t)}
+                      />
+                    </View>
+                  </GestureDetector>
+                </View>
+              );
+              if (!isDragged) exclusive += 1;
+              return node;
+            });
+            return (
+              <>
+                {nodes}
+                {dropHere !== null && dropHere >= exclusive ? (
+                  <DropIndicator />
+                ) : null}
+              </>
+            );
+          })()
         )}
       </ScrollView>
 
