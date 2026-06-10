@@ -4,18 +4,21 @@ import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
+import { useChatUnread } from "../../lib/chat-unread";
 
 type MoreItem = {
   label: string;
   description: string;
   icon: keyof typeof Feather.glyphMap;
   comingSoon?: boolean;
+  badge?: number;
   onPress?: () => void;
 };
 
 export default function More() {
   const router = useRouter();
-  const { user, partner, logout } = useAuth();
+  const { user, partner, isPartnerAdmin, logout } = useAuth();
+  const { unread } = useChatUnread();
 
   async function onSignOut() {
     await logout();
@@ -23,6 +26,13 @@ export default function More() {
   }
 
   const tools: MoreItem[] = [
+    {
+      label: "Senior Desk",
+      description: "Office chat, private notes & reminders",
+      icon: "message-square",
+      badge: unread.totalUnread,
+      onPress: () => router.push("/(home)/senior-desk"),
+    },
     {
       label: "Client Crew",
       description: "Clients & linked matters",
@@ -48,11 +58,34 @@ export default function More() {
       onPress: () => router.push("/(home)/ai"),
     },
     {
+      label: "Disposed Cases",
+      description: "Closed matters archive",
+      icon: "archive",
+      onPress: () => router.push("/(home)/cases/disposed"),
+    },
+    {
       label: "Users / Advocates",
       description: "Office team & roles",
       icon: "user-plus",
       onPress: () => router.push("/(home)/users"),
     },
+    // Office-admin desk — mirrors the web sidebar's admin-only items.
+    ...(isPartnerAdmin
+      ? ([
+          {
+            label: "Office Activity",
+            description: "Audit log of everything that happened",
+            icon: "activity",
+            onPress: () => router.push("/(home)/activity"),
+          },
+          {
+            label: "Office Settings",
+            description: "Activity retention & housekeeping",
+            icon: "settings",
+            onPress: () => router.push("/(home)/settings"),
+          },
+        ] as MoreItem[])
+      : []),
   ];
 
   const account: MoreItem[] = [
@@ -241,6 +274,27 @@ function Section({ items }: { items: MoreItem[] }) {
               {it.description}
             </Text>
           </View>
+          {it.badge && it.badge > 0 ? (
+            <View
+              className="items-center justify-center rounded-full"
+              style={{
+                minWidth: 20,
+                height: 20,
+                paddingHorizontal: 5,
+                backgroundColor: "#c5853a",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  fontSize: 10,
+                  color: "#2a1c08",
+                }}
+              >
+                {it.badge > 99 ? "99+" : it.badge}
+              </Text>
+            </View>
+          ) : null}
           {it.comingSoon ? (
             <View
               className="rounded-sm px-1.5 py-0.5"

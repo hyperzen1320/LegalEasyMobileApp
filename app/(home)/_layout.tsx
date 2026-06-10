@@ -4,11 +4,15 @@ import { View, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
+import { useChatUnread } from "../../lib/chat-unread";
 
 export default function HomeLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { status, isGlobalAdmin } = useAuth();
+  // Senior Desk unread total rides on the More tab (web puts it on the
+  // sidebar item). The singleton polls every 12s while the app is open.
+  const { unread } = useChatUnread();
 
   // Two redirects this layout enforces:
   //  - no session → back to signin
@@ -98,6 +102,18 @@ export default function HomeLayout() {
           tabBarIcon: ({ color }) => (
             <Feather name="menu" size={20} color={color} />
           ),
+          tabBarBadge:
+            unread.totalUnread > 0
+              ? unread.totalUnread > 99
+                ? "99+"
+                : unread.totalUnread
+              : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: "#c5853a",
+            color: "#2a1c08",
+            fontFamily: "DMMono-Medium",
+            fontSize: 9,
+          },
         }}
       />
       <Tabs.Screen name="clients" options={{ href: null }} />
@@ -106,6 +122,9 @@ export default function HomeLayout() {
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="users" options={{ href: null }} />
       <Tabs.Screen name="workflow" options={{ href: null }} />
+      <Tabs.Screen name="senior-desk" options={{ href: null }} />
+      <Tabs.Screen name="activity" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }
