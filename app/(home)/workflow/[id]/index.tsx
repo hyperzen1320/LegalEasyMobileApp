@@ -42,6 +42,7 @@ import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
 import { useBreakpoint } from "../../../../lib/useBreakpoint";
 import ExportSheet from "../../../../components/ExportSheet";
+import BoardSettingsSheet from "../../../../components/workflow/BoardSettingsSheet";
 import { exportBoardXlsx } from "../../../../lib/exports";
 
 const TEMP_PREFIX = "tmp:";
@@ -75,6 +76,7 @@ export default function BoardDetail() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -388,6 +390,7 @@ export default function BoardDetail() {
           unreadCount={live.unreadCount + pendingCount}
           onBack={() => router.back()}
           onExport={data ? () => setExporting(true) : null}
+          onSettings={data ? () => setSettingsOpen(true) : null}
           onBell={() => {
             live.markSeen();
             router.push(
@@ -520,6 +523,25 @@ export default function BoardDetail() {
         }}
       />
 
+      {board ? (
+        <BoardSettingsSheet
+          visible={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          boardId={boardId}
+          title={board.title}
+          color={board.color}
+          onSaved={({ title, color }) =>
+            setData((prev) =>
+              prev
+                ? { ...prev, board: { ...prev.board, title, color } }
+                : prev
+            )
+          }
+          onDeleted={() => router.back()}
+          onDeleteNeedsRequest={(target) => setRequestTarget(target)}
+        />
+      ) : null}
+
       {/* Board data export — xlsx is the only server-side board format;
           the PNG/PDF snapshot ships with the drag-drop phase. */}
       <ExportSheet
@@ -547,6 +569,7 @@ function Header({
   unreadCount,
   onBack,
   onExport,
+  onSettings,
   onBell,
 }: {
   title: string;
@@ -558,6 +581,7 @@ function Header({
   unreadCount: number;
   onBack: () => void;
   onExport?: (() => void) | null;
+  onSettings?: (() => void) | null;
   onBell: () => void;
 }) {
   return (
@@ -657,6 +681,19 @@ function Header({
           accessibilityLabel="Export board data"
         >
           <Feather name="download" size={15} color={accent} />
+        </Pressable>
+      ) : null}
+
+      {/* Settings */}
+      {onSettings ? (
+        <Pressable
+          onPress={onSettings}
+          hitSlop={6}
+          className="active:opacity-50 h-9 w-9 items-center justify-center rounded-md"
+          style={{ backgroundColor: "#ffffff" }}
+          accessibilityLabel="Board settings"
+        >
+          <Feather name="more-horizontal" size={15} color={accent} />
         </Pressable>
       ) : null}
 

@@ -122,7 +122,14 @@ export default function ClientCrew() {
             <FlashList
               data={filtered}
               keyExtractor={(c) => c.id}
-              renderItem={({ item }) => <ClientCard c={item} />}
+              renderItem={({ item }) => (
+                <ClientCard
+                  c={item}
+                  onPress={() =>
+                    router.push(`/(home)/clients/${item.id}` as never)
+                  }
+                />
+              )}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -229,7 +236,13 @@ function TopBar({ count }: { count: number }) {
   );
 }
 
-function ClientCard({ c }: { c: PartnerClient }) {
+function ClientCard({
+  c,
+  onPress,
+}: {
+  c: PartnerClient;
+  onPress: () => void;
+}) {
   const phone = (c.phone || "").trim();
   const wa = (c.whatsapp || c.phone || "").replace(/\D/g, "");
   const waNumber = wa.length === 10 ? `91${wa}` : wa;
@@ -286,8 +299,9 @@ function ClientCard({ c }: { c: PartnerClient }) {
   }
 
   return (
-    <View
-      className="rounded-2xl bg-app-paper p-4"
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl bg-app-paper p-4 active:opacity-90"
       style={{
         shadowColor: "#0a1124",
         shadowOpacity: 0.05,
@@ -295,6 +309,8 @@ function ClientCard({ c }: { c: PartnerClient }) {
         shadowOffset: { width: 0, height: 1 },
         elevation: 1,
       }}
+      accessibilityRole="button"
+      accessibilityLabel={`Client ${c.name}`}
     >
       {/* Header row — name + cases pill */}
       <View className="flex-row items-start gap-3">
@@ -357,7 +373,7 @@ function ClientCard({ c }: { c: PartnerClient }) {
           variant="ghost"
         />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

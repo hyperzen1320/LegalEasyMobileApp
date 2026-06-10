@@ -342,14 +342,14 @@ function StatsGrid({
       value: stats?.tomorrowHearings ?? 0,
       variant: "ink",
       icon: "calendar",
-      href: "/(home)/hearings",
+      href: "/(home)/hearings?bucket=tomorrow",
     },
     {
       label: "Pending",
       value: stats?.pendingDates ?? 0,
       variant: "copper",
       icon: "alert-triangle",
-      href: "/(home)/cases",
+      href: "/(home)/hearings?bucket=pending",
     },
     {
       label: "Case Vault",

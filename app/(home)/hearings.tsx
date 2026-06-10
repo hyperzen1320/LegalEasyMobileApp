@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   View,
@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
@@ -22,6 +22,7 @@ import {
   type PartnerHearingItem,
 } from "../../lib/api";
 import { DateField, SheetField } from "../../components/CaseFields";
+import Sheet from "../../components/Sheet";
 import { useAuth } from "../../lib/auth-context";
 import ExportSheet from "../../components/ExportSheet";
 import {
@@ -51,6 +52,23 @@ const STATUS_OPTIONS = [
 export default function Hearings() {
   const { isPartnerAdmin } = useAuth();
   const [bucket, setBucket] = useState<HearingBucket>("today");
+  // Dashboard stat tiles deep-link straight into a bucket
+  // (/(home)/hearings?bucket=tomorrow).
+  const { bucket: bucketParam } = useLocalSearchParams<{ bucket?: string }>();
+  useEffect(() => {
+    if (
+      (bucketParam === "today" ||
+        bucketParam === "tomorrow" ||
+        bucketParam === "pending") &&
+      bucketParam !== bucket
+    ) {
+      setLoading(true);
+      setBucket(bucketParam);
+    }
+    // Only react to the param — `bucket` changing via the segmented
+    // control must not re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketParam]);
   const [items, setItems] = useState<PartnerHearingItem[]>([]);
   const [counts, setCounts] = useState({ today: 0, tomorrow: 0, pending: 0 });
   const [officeName, setOfficeName] = useState("");
@@ -63,6 +81,25 @@ export default function Hearings() {
   const [exporting, setExporting] = useState(false);
   const [exportBucket, setExportBucket] =
     useState<HearingExportBucket>("today");
+  // Court-wise grouping (the cause-list reading order) + the compact
+  // update sheet for scheduled rows.
+  const [groupByCourt, setGroupByCourt] = useState(false);
+  const [updating, setUpdating] = useState<PartnerHearingItem | null>(null);
+
+  const courtGroups = useMemo(() => {
+    const map = new Map<string, PartnerHearingItem[]>();
+    for (const c of items) {
+      const key =
+        [c.courtName, c.courtPlace].filter(Boolean).join(", ") ||
+        "Court not set";
+      const arr = map.get(key) ?? [];
+      arr.push(c);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([title, groupItems]) => ({ title, items: groupItems }));
+  }, [items]);
 
   const load = useCallback(
     async (b: HearingBucket) => {
@@ -120,6 +157,40 @@ export default function Hearings() {
         />
         <Segmented bucket={bucket} onChange={changeBucket} counts={counts} />
 
+        {bucket !== "pending" && items.length > 0 && !loading ? (
+          <View className="px-5 pt-3 flex-row justify-end">
+            <Pressable
+              onPress={() => setGroupByCourt((v) => !v)}
+              hitSlop={6}
+              className="flex-row items-center gap-1.5 rounded-full px-3 active:opacity-75"
+              style={{
+                paddingVertical: 5,
+                backgroundColor: groupByCourt ? "#0a1124" : "#ffffff",
+                borderWidth: 1,
+                borderColor: groupByCourt ? "#0a1124" : "#e3d9c0",
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: groupByCourt }}
+              accessibilityLabel="Group by court"
+            >
+              <Feather
+                name="layers"
+                size={12}
+                color={groupByCourt ? "#ddb074" : "#8a5821"}
+              />
+              <Text
+                className="text-[11px]"
+                style={{
+                  fontFamily: "Manrope-SemiBold",
+                  color: groupByCourt ? "#f5ebd6" : "#4d4538",
+                }}
+              >
+                By court
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {loading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color="#c5853a" size="large" />
@@ -173,6 +244,42 @@ export default function Hearings() {
                   </Animated.View>
                 ))}
               </View>
+            ) : groupByCourt ? (
+              <View className="gap-5">
+                {courtGroups.map((group) => (
+                  <Animated.View
+                    key={group.title}
+                    entering={FadeInDown.duration(380)}
+                  >
+                    {/* Court-wise cause list — the order a clerk reads it */}
+                    <View className="flex-row items-center gap-2.5 mb-2.5">
+                      <View className="h-px flex-1 bg-app-edge" />
+                      <Text
+                        className="text-[10px] uppercase text-app-copper-deep"
+                        style={{
+                          fontFamily: "DMMono-Medium",
+                          letterSpacing: 1.6,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {group.title} · {group.items.length}
+                      </Text>
+                      <View className="h-px flex-1 bg-app-edge" />
+                    </View>
+                    <View className="gap-3">
+                      {group.items.map((c) => (
+                        <ScheduledRow
+                          key={c.id}
+                          c={c}
+                          bucket={bucket}
+                          officeName={officeName}
+                          onUpdate={() => setUpdating(c)}
+                        />
+                      ))}
+                    </View>
+                  </Animated.View>
+                ))}
+              </View>
             ) : (
               <View className="gap-3">
                 {items.map((c, i) => (
@@ -186,6 +293,7 @@ export default function Hearings() {
                       c={c}
                       bucket={bucket}
                       officeName={officeName}
+                      onUpdate={() => setUpdating(c)}
                     />
                   </Animated.View>
                 ))}
@@ -239,7 +347,132 @@ export default function Hearings() {
           })}
         </View>
       </ExportSheet>
+
+      <UpdateHearingSheet
+        item={updating}
+        onClose={() => setUpdating(null)}
+        onSaved={() => {
+          setUpdating(null);
+          load(bucket);
+        }}
+      />
     </View>
+  );
+}
+
+/* ─── Quick update (scheduled rows) ─── */
+
+function UpdateHearingSheet({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: PartnerHearingItem | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [date, setDate] = useState("");
+  const [status, setStatus] = useState("Filed");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (item) {
+      setDate(item.nextHearingDate ? item.nextHearingDate.slice(0, 10) : "");
+      setStatus(item.status || "Filed");
+      setError(null);
+      setSaving(false);
+    }
+  }, [item]);
+
+  async function save() {
+    if (!item || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await partnerUpdateCase(item.id, {
+        // Clearing the date is allowed — the matter moves to Pending.
+        nextHearingDate: date || null,
+        status,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't update");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Sheet
+      visible={Boolean(item)}
+      onClose={saving ? () => {} : onClose}
+      eyebrow="Hearing Track"
+      title={item?.caseNo ?? ""}
+      showClose={!saving}
+    >
+      <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+        {error ? (
+          <View
+            className="rounded-md px-3.5 py-2.5 mb-3"
+            style={{ backgroundColor: "#f6dccd" }}
+          >
+            <Text
+              className="text-[12.5px]"
+              style={{ fontFamily: "Manrope", color: "#c14a37" }}
+            >
+              {error}
+            </Text>
+          </View>
+        ) : null}
+
+        <DateField label="Next hearing date" value={date} onChange={setDate} />
+        <View className="mt-3">
+          <SheetField
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={setStatus}
+          />
+        </View>
+        <Text
+          className="mt-2 text-[11px] text-app-fg-muted"
+          style={{ fontFamily: "Manrope" }}
+        >
+          Leave the date empty to move the matter to Pending.
+        </Text>
+
+        <Pressable
+          onPress={save}
+          disabled={saving}
+          className="mt-5 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+          style={{
+            backgroundColor: "#0a1124",
+            paddingVertical: 14,
+            shadowColor: "#0a1124",
+            shadowOpacity: 0.22,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 4,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Save hearing update"
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color="#f5ebd6" />
+          ) : (
+            <Feather name="check" size={15} color="#f5ebd6" />
+          )}
+          <Text
+            className="text-[13.5px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+          >
+            {saving ? "Saving…" : "Save update"}
+          </Text>
+        </Pressable>
+        <View style={{ height: 16 }} />
+      </View>
+    </Sheet>
   );
 }
 
@@ -363,10 +596,12 @@ function ScheduledRow({
   c,
   bucket,
   officeName,
+  onUpdate,
 }: {
   c: PartnerHearingItem;
   bucket: HearingBucket;
   officeName: string;
+  onUpdate: () => void;
 }) {
   const router = useRouter();
   const courtLine = [c.courtName, c.courtPlace].filter(Boolean).join(", ");
@@ -448,6 +683,22 @@ function ScheduledRow({
           officeName={officeName}
           hasNumber={hasWa}
         />
+        <Pressable
+          onPress={onUpdate}
+          hitSlop={4}
+          className="rounded-md items-center justify-center active:opacity-80"
+          style={{
+            height: 34,
+            width: 34,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Update hearing for ${c.caseNo}`}
+        >
+          <Feather name="edit-2" size={13} color="#8a5821" />
+        </Pressable>
         <Pressable
           onPress={openCase}
           className="ml-auto rounded-md flex-row items-center gap-1.5 px-4 py-2 active:opacity-90"
