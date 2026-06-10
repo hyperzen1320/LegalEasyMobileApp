@@ -477,7 +477,7 @@ function DoneView({
   );
 }
 
-function ActionRow({
+export function ActionRow({
   icon,
   label,
   onPress,

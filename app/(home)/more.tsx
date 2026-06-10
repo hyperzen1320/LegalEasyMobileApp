@@ -73,6 +73,12 @@ export default function More() {
     ...(isPartnerAdmin
       ? ([
           {
+            label: "Attendance",
+            description: "The office register, day by day",
+            icon: "check-square",
+            onPress: () => router.push("/(home)/attendance"),
+          },
+          {
             label: "Office Activity",
             description: "Audit log of everything that happened",
             icon: "activity",

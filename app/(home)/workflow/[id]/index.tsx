@@ -41,9 +41,16 @@ import EdgePill from "../../../../components/workflow/EdgePill";
 import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
 import { useBreakpoint } from "../../../../lib/useBreakpoint";
-import ExportSheet from "../../../../components/ExportSheet";
+import BoardExportSheet from "../../../../components/workflow/BoardExportSheet";
 import BoardSettingsSheet from "../../../../components/workflow/BoardSettingsSheet";
+import BoardSnapshotView from "../../../../components/workflow/BoardSnapshotView";
 import { exportBoardXlsx } from "../../../../lib/exports";
+import {
+  captureBoardPng,
+  boardPngToPdf,
+} from "../../../../lib/boardSnapshot";
+import { File } from "expo-file-system";
+import type { DownloadedFile } from "../../../../lib/files";
 
 const TEMP_PREFIX = "tmp:";
 
@@ -77,6 +84,59 @@ export default function BoardDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // PNG/PDF snapshot: mount the full-content capture view (occluded by
+  // an opaque scrim), wait one laid-out frame, photograph it.
+  const [snapshotting, setSnapshotting] = useState(false);
+  const snapshotInnerRef = useRef<View | null>(null);
+  const snapshotReadyRef = useRef<
+    ((s: { w: number; h: number }) => void) | null
+  >(null);
+
+  const capture = useCallback(
+    async (format: "png" | "pdf"): Promise<DownloadedFile> => {
+      if (!data) throw new Error("Board not loaded yet.");
+      setSnapshotting(true);
+      try {
+        const size = await new Promise<{ w: number; h: number }>(
+          (resolve, reject) => {
+            snapshotReadyRef.current = resolve;
+            setTimeout(
+              () => reject(new Error("Snapshot timed out — try again.")),
+              8000
+            );
+          }
+        );
+        const png = await captureBoardPng(snapshotInnerRef, size.w, size.h);
+        const slug =
+          data.board.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "board";
+        const d = new Date();
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        if (format === "png") {
+          return {
+            uri: png.uri,
+            filename: `${slug}-${stamp}.png`,
+            mime: "image/png",
+            size: new File(png.uri).size,
+          };
+        }
+        const pdfUri = await boardPngToPdf(png, data.board.title);
+        return {
+          uri: pdfUri,
+          filename: `${slug}-${stamp}.pdf`,
+          mime: "application/pdf",
+          size: new File(pdfUri).size,
+        };
+      } finally {
+        snapshotReadyRef.current = null;
+        setSnapshotting(false);
+      }
+    },
+    [data]
+  );
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -542,17 +602,51 @@ export default function BoardDetail() {
         />
       ) : null}
 
-      {/* Board data export — xlsx is the only server-side board format;
-          the PNG/PDF snapshot ships with the drag-drop phase. */}
-      <ExportSheet
+      {/* Save menu: Picture / Document (native snapshot) / Data (xlsx) */}
+      <BoardExportSheet
         visible={exporting}
         onClose={() => setExporting(false)}
-        eyebrow="Workflow"
-        title="Export board data"
         contextLine={`${totalLists} lists · ${totalCards} cards`}
-        formats={["xlsx"]}
-        run={() => exportBoardXlsx(boardId, board?.title ?? "board")}
+        exportXlsx={() => exportBoardXlsx(boardId, board?.title ?? "board")}
+        capture={capture}
       />
+
+      {/* Capture rig — attached, opaque, occluded. Android only
+          photographs views that are really laid out on screen. */}
+      {snapshotting && data ? (
+        <>
+          <BoardSnapshotView
+            data={data}
+            accent={styles.accent}
+            innerRef={snapshotInnerRef}
+            onReady={(w, h) => snapshotReadyRef.current?.({ w, h })}
+          />
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#f4ede0",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator color="#c5853a" size="large" />
+            <Text
+              className="mt-3 text-[12px] uppercase"
+              style={{
+                fontFamily: "DMMono-Medium",
+                letterSpacing: 1.6,
+                color: "#8a5821",
+              }}
+            >
+              Preparing snapshot…
+            </Text>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
