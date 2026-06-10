@@ -22,6 +22,13 @@ import {
   type PartnerHearingItem,
 } from "../../lib/api";
 import { DateField, SheetField } from "../../components/CaseFields";
+import { useAuth } from "../../lib/auth-context";
+import ExportSheet from "../../components/ExportSheet";
+import {
+  HEARING_EXPORT_BUCKETS,
+  exportHearings,
+  type HearingExportBucket,
+} from "../../lib/exports";
 
 const SEGMENTS: { key: HearingBucket; label: string }[] = [
   { key: "today", label: "Today" },
@@ -42,6 +49,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function Hearings() {
+  const { isPartnerAdmin } = useAuth();
   const [bucket, setBucket] = useState<HearingBucket>("today");
   const [items, setItems] = useState<PartnerHearingItem[]>([]);
   const [counts, setCounts] = useState({ today: 0, tomorrow: 0, pending: 0 });
@@ -49,6 +57,12 @@ export default function Hearings() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Export sheet state — the export bucket starts from whatever tab the
+  // user is on but can be changed in the sheet (incl. "All", which only
+  // exists server-side on the export endpoint).
+  const [exporting, setExporting] = useState(false);
+  const [exportBucket, setExportBucket] =
+    useState<HearingExportBucket>("today");
 
   const load = useCallback(
     async (b: HearingBucket) => {
@@ -94,7 +108,16 @@ export default function Hearings() {
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar />
+        <TopBar
+          onExport={
+            isPartnerAdmin
+              ? () => {
+                  setExportBucket(bucket);
+                  setExporting(true);
+                }
+              : null
+          }
+        />
         <Segmented bucket={bucket} onChange={changeBucket} counts={counts} />
 
         {loading ? (
@@ -171,32 +194,97 @@ export default function Hearings() {
           </ScrollView>
         )}
       </SafeAreaView>
+
+      <ExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        eyebrow="Hearing Track"
+        title="Export the cause list"
+        contextLine={`Today ${counts.today} · Tomorrow ${counts.tomorrow} · Pending ${counts.pending}`}
+        run={(format) => exportHearings(format, exportBucket)}
+      >
+        <Text
+          className="text-[10px] uppercase text-app-copper-deep mb-2"
+          style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+        >
+          Hearings
+        </Text>
+        <View className="flex-row gap-2 mb-5">
+          {HEARING_EXPORT_BUCKETS.map((b) => {
+            const active = b.key === exportBucket;
+            return (
+              <Pressable
+                key={b.key}
+                onPress={() => setExportBucket(b.key)}
+                className="flex-1 items-center rounded-lg py-2 active:opacity-85"
+                style={{
+                  backgroundColor: active ? "#0a1124" : "#ffffff",
+                  borderWidth: 1,
+                  borderColor: active ? "#0a1124" : "#e3d9c0",
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  className="text-[12px]"
+                  style={{
+                    fontFamily: "Manrope-SemiBold",
+                    color: active ? "#f5ebd6" : "#0a1124",
+                  }}
+                >
+                  {b.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ExportSheet>
     </View>
   );
 }
 
 /* ─── Top bar ─── */
 
-function TopBar() {
+function TopBar({ onExport }: { onExport?: (() => void) | null }) {
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
   return (
-    <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5">
-      <Text
-        className="text-[10px] uppercase text-app-copper-deep"
-        style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
-      >
-        The Diary · {today}
-      </Text>
-      <Text
-        className="mt-0.5 text-[18px] font-semibold tracking-tight text-app-ink leading-none"
-        style={{ fontFamily: "Crimson-SemiBold" }}
-      >
-        Hearing Track
-      </Text>
+    <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between">
+      <View>
+        <Text
+          className="text-[10px] uppercase text-app-copper-deep"
+          style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+        >
+          The Diary · {today}
+        </Text>
+        <Text
+          className="mt-0.5 text-[18px] font-semibold tracking-tight text-app-ink leading-none"
+          style={{ fontFamily: "Crimson-SemiBold" }}
+        >
+          Hearing Track
+        </Text>
+      </View>
+      {onExport ? (
+        <Pressable
+          onPress={onExport}
+          hitSlop={6}
+          className="rounded-md items-center justify-center active:opacity-70"
+          style={{
+            height: 36,
+            width: 36,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Export cause list"
+        >
+          <Feather name="download" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

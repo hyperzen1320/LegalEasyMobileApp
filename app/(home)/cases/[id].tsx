@@ -26,6 +26,7 @@ import {
   DateField,
   formatDateForDisplay,
 } from "../../../components/CaseFields";
+import DocumentsPanel from "../../../components/cases/DocumentsPanel";
 
 const STATUS_OPTIONS = [
   "Filed",
@@ -129,13 +130,17 @@ export default function CaseDetail() {
               />
             </Animated.View>
 
+            <Animated.View entering={FadeInDown.duration(380).delay(260)}>
+              <DocumentsPanel caseId={data.case.id} />
+            </Animated.View>
+
             {data.case.hearings && data.case.hearings.length > 0 ? (
-              <Animated.View entering={FadeInDown.duration(380).delay(260)}>
+              <Animated.View entering={FadeInDown.duration(380).delay(320)}>
                 <HistoryCard hearings={data.case.hearings} />
               </Animated.View>
             ) : null}
 
-            <Animated.View entering={FadeInDown.duration(380).delay(320)}>
+            <Animated.View entering={FadeInDown.duration(380).delay(380)}>
               <DeleteRow
                 caseId={data.case.id}
                 caseNo={data.case.caseNo}

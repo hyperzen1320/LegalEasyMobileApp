@@ -41,6 +41,8 @@ import EdgePill from "../../../../components/workflow/EdgePill";
 import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
 import { useBreakpoint } from "../../../../lib/useBreakpoint";
+import ExportSheet from "../../../../components/ExportSheet";
+import { exportBoardXlsx } from "../../../../lib/exports";
 
 const TEMP_PREFIX = "tmp:";
 
@@ -72,6 +74,7 @@ export default function BoardDetail() {
   const [data, setData] = useState<BoardFullResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -384,6 +387,7 @@ export default function BoardDetail() {
           presenceCount={presence.length}
           unreadCount={live.unreadCount + pendingCount}
           onBack={() => router.back()}
+          onExport={data ? () => setExporting(true) : null}
           onBell={() => {
             live.markSeen();
             router.push(
@@ -515,6 +519,18 @@ export default function BoardDetail() {
           );
         }}
       />
+
+      {/* Board data export — xlsx is the only server-side board format;
+          the PNG/PDF snapshot ships with the drag-drop phase. */}
+      <ExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        eyebrow="Workflow"
+        title="Export board data"
+        contextLine={`${totalLists} lists · ${totalCards} cards`}
+        formats={["xlsx"]}
+        run={() => exportBoardXlsx(boardId, board?.title ?? "board")}
+      />
     </View>
   );
 }
@@ -530,6 +546,7 @@ function Header({
   presenceCount,
   unreadCount,
   onBack,
+  onExport,
   onBell,
 }: {
   title: string;
@@ -540,6 +557,7 @@ function Header({
   presenceCount: number;
   unreadCount: number;
   onBack: () => void;
+  onExport?: (() => void) | null;
   onBell: () => void;
 }) {
   return (
@@ -627,6 +645,19 @@ function Header({
             {presenceCount}
           </Text>
         </View>
+      ) : null}
+
+      {/* Export */}
+      {onExport ? (
+        <Pressable
+          onPress={onExport}
+          hitSlop={6}
+          className="active:opacity-50 h-9 w-9 items-center justify-center rounded-md"
+          style={{ backgroundColor: "#ffffff" }}
+          accessibilityLabel="Export board data"
+        >
+          <Feather name="download" size={15} color={accent} />
+        </Pressable>
       ) : null}
 
       {/* Bell */}

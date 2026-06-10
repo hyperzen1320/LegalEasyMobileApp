@@ -14,14 +14,26 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { FlashList } from "@shopify/flash-list";
 import { partnerListCases, type PartnerCase } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
+import ExportSheet from "../../../components/ExportSheet";
+import {
+  CASE_EXPORT_COLUMNS,
+  CASE_EXPORT_DEFAULT_KEYS,
+  exportCases,
+} from "../../../lib/exports";
 
 export default function CaseVault() {
   const router = useRouter();
+  // Exports are office-admin only (server enforces role=admin; the
+  // partner admin is the only mobile user that maps to it — /me doesn't
+  // carry staff roles, so staff-admins export from the web).
+  const { isPartnerAdmin } = useAuth();
   const [cases, setCases] = useState<PartnerCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -73,7 +85,10 @@ export default function CaseVault() {
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar count={cases.length} />
+        <TopBar
+          count={cases.length}
+          onExport={isPartnerAdmin ? () => setExporting(true) : null}
+        />
 
         {/* Search bar — sticky under topbar */}
         <View className="px-5 pt-4 pb-2 bg-app-canvas">
@@ -166,6 +181,30 @@ export default function CaseVault() {
           </Animated.View>
         )}
       </SafeAreaView>
+
+      <ExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        eyebrow="Case Vault"
+        title="Export the case rolls"
+        contextLine={
+          query.trim()
+            ? `Filtered — “${query.trim()}”`
+            : `All active matters · ${cases.length}`
+        }
+        columns={{
+          // "Disposed On" is always empty on the active vault; the
+          // disposed archive export offers it instead.
+          catalog: CASE_EXPORT_COLUMNS.filter((c) => c.key !== "disposedAt"),
+          defaultKeys: CASE_EXPORT_DEFAULT_KEYS,
+        }}
+        run={(format, columnKeys) =>
+          exportCases(format, {
+            filters: query.trim() ? { search: query.trim() } : {},
+            columns: columnKeys,
+          })
+        }
+      />
     </View>
   );
 }
@@ -174,7 +213,13 @@ function RowGap() {
   return <View style={{ height: 12 }} />;
 }
 
-function TopBar({ count }: { count: number }) {
+function TopBar({
+  count,
+  onExport,
+}: {
+  count: number;
+  onExport?: (() => void) | null;
+}) {
   const router = useRouter();
   return (
     <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between">
@@ -202,6 +247,25 @@ function TopBar({ count }: { count: number }) {
           ) : null}
         </View>
       </View>
+      {onExport ? (
+        <Pressable
+          onPress={onExport}
+          hitSlop={6}
+          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+          style={{
+            height: 36,
+            width: 36,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+            marginLeft: "auto",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Export case rolls"
+        >
+          <Feather name="download" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={() => router.push("/(home)/cases/new")}
         className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
