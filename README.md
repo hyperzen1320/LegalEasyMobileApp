@@ -208,8 +208,9 @@ All endpoints are tenant-scoped on the server. The mobile client never sees data
 ## 🛣️ Roadmap
 
 - [x] **Phase 1 MVP** — every web module mirrored on mobile
-- [ ] **Phase 1.5** — Kanban detail inside boards (lists + task cards)
-- [ ] **Phase 2** — Push notifications for next-hearing reminders · Senior Desk · Offline write queue
+- [x] **Phase 1.5** — Kanban detail inside boards, now with long-press **drag & drop**
+- [x] **Full web parity** — case documents (upload/preview/share/print), every export (Excel · Word · PDF · board snapshots), Senior Desk chat + reminders, attendance register, disposed archive, office activity & settings, tablet two-pane layouts — see [`docs/PARITY_PLAN.md`](docs/PARITY_PLAN.md)
+- [ ] **Next** — Push notifications for next-hearing reminders · Offline write queue
 
 ---
 

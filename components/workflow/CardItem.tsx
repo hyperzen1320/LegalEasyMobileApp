@@ -117,6 +117,7 @@ export default function CardItem({
             letterSpacing: -0.1,
           }}
           numberOfLines={3}
+          maxFontSizeMultiplier={1.3}
         >
           {task.title}
         </Text>

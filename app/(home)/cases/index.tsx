@@ -24,6 +24,8 @@ import CaseFilterSheet, {
   countActive,
   type CaseFilterLabels,
 } from "../../../components/cases/CaseFilterSheet";
+import CaseDetailView from "../../../components/cases/CaseDetailView";
+import { useBreakpoint } from "../../../lib/useBreakpoint";
 import { formatDateForDisplay } from "../../../components/CaseFields";
 import {
   CASE_EXPORT_COLUMNS,
@@ -54,6 +56,12 @@ export default function CaseVault() {
   const [filterLabels, setFilterLabels] = useState<CaseFilterLabels>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // Tablet two-pane: ≥840dp the vault keeps the list on the left and
+  // embeds the dossier on the right. Phones keep the pushed [id] route
+  // (which stays registered either way, so deep links never break).
+  const { isExpanded } = useBreakpoint();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const pageRef = useRef(1);
   const reqIdRef = useRef(0);
@@ -191,6 +199,19 @@ export default function CaseVault() {
           onExport={isPartnerAdmin ? () => setExporting(true) : null}
         />
 
+        <View className="flex-1 flex-row">
+        {/* Left pane: search + rolls (the whole screen on phones) */}
+        <View
+          style={
+            isExpanded
+              ? {
+                  width: 392,
+                  borderRightWidth: 1,
+                  borderRightColor: "#e3d9c0",
+                }
+              : { flex: 1 }
+          }
+        >
         {/* Search bar — sticky under topbar */}
         <View className="px-5 pt-4 pb-2 bg-app-canvas">
           <View
@@ -305,8 +326,19 @@ export default function CaseVault() {
           >
             <FlashList
               data={cases}
+              extraData={selectedId}
               keyExtractor={(c) => c.id}
-              renderItem={({ item }) => <CaseCard c={item} />}
+              renderItem={({ item }) => (
+                <CaseCard
+                  c={item}
+                  selected={isExpanded && selectedId === item.id}
+                  onPress={() =>
+                    isExpanded
+                      ? setSelectedId(item.id)
+                      : router.push(`/(home)/cases/${item.id}` as never)
+                  }
+                />
+              )}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -362,6 +394,46 @@ export default function CaseVault() {
             />
           </Animated.View>
         )}
+        </View>
+
+        {/* Right pane: the dossier (tablets only) */}
+        {isExpanded ? (
+          <View className="flex-1">
+            {selectedId ? (
+              <CaseDetailView
+                key={selectedId}
+                caseId={selectedId}
+                onDeleted={() => {
+                  setSelectedId(null);
+                  load("reset");
+                }}
+              />
+            ) : (
+              <View className="flex-1 items-center justify-center px-10">
+                <View
+                  className="h-14 w-14 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "#efe5d0" }}
+                >
+                  <Feather name="book-open" size={22} color="#8a5821" />
+                </View>
+                <Text
+                  className="mt-5 text-[20px] tracking-tight text-app-ink text-center"
+                  style={{ fontFamily: "Crimson-SemiBold" }}
+                >
+                  Pick a matter from the rolls.
+                </Text>
+                <Text
+                  className="mt-2 text-[13px] text-app-fg-muted text-center max-w-[300px]"
+                  style={{ fontFamily: "Manrope" }}
+                >
+                  Its full dossier — dates, documents, contacts — opens
+                  right here.
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : null}
+        </View>
       </SafeAreaView>
 
       <ExportSheet
@@ -496,8 +568,15 @@ function TopBar({
   );
 }
 
-function CaseCard({ c }: { c: PartnerCase }) {
-  const router = useRouter();
+function CaseCard({
+  c,
+  onPress,
+  selected,
+}: {
+  c: PartnerCase;
+  onPress: () => void;
+  selected?: boolean;
+}) {
   const next = c.nextHearingDate ? new Date(c.nextHearingDate) : null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -516,7 +595,7 @@ function CaseCard({ c }: { c: PartnerCase }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/(home)/cases/${c.id}` as never)}
+      onPress={onPress}
       className="rounded-xl bg-app-paper p-4 active:opacity-90"
       style={{
         shadowColor: "#0a1124",
@@ -526,6 +605,8 @@ function CaseCard({ c }: { c: PartnerCase }) {
         elevation: 1,
         borderLeftWidth: 3,
         borderLeftColor: "#c5853a",
+        borderWidth: selected ? 1.5 : 0,
+        borderColor: selected ? "#c5853a" : "transparent",
       }}
     >
       {/* Top row — case no, file no, status pill */}

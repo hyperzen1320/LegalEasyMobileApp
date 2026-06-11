@@ -106,7 +106,7 @@ export default function NewUser() {
           className="flex-1"
         >
           <ScrollView
-            contentContainerClassName="px-5 pt-5 pb-12"
+            contentContainerClassName="px-5 pt-5 pb-12 sm:max-w-[560px] sm:self-center sm:w-full"
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
