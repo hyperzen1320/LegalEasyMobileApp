@@ -42,10 +42,17 @@ import {
   DMMono_500Medium,
 } from "@expo-google-fonts/dm-mono";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { View } from "react-native";
 import { useEffect } from "react";
+import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider } from "../lib/auth-context";
 import { applyOrientationPolicy } from "../lib/orientation";
+
+// Hold the native splash (the brass seal on paper) until fonts are in,
+// then fade it straight into whatever index renders — no blank frame,
+// no second loading screen unless boot is genuinely slow (index shows
+// the animated BootScreen only while the session probe is in flight).
+SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.setOptions({ fade: true, duration: 240 });
 
 export default function RootLayout() {
   // Phones lock portrait, tablets rotate freely — runtime-applied because
@@ -82,8 +89,16 @@ export default function RootLayout() {
     "DMMono-Medium": DMMono_500Medium,
   });
 
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
-    return <View className="flex-1 bg-paper" />;
+    // Native splash is still covering the window — render nothing
+    // underneath rather than a blank flash.
+    return null;
   }
 
   return (

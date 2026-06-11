@@ -1,14 +1,29 @@
 import { ScrollView, View, Text, Pressable, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import Animated, {
   FadeInDown,
   FadeIn,
   FadeInUp,
 } from "react-native-reanimated";
+import { useAuth } from "../lib/auth-context";
+import BootScreen from "../components/BootScreen";
 
 export default function Home() {
+  const { status } = useAuth();
+
+  // Boot order: the native splash covers font loading; if the session
+  // probe is still in flight after that (slow network), the animated
+  // BootScreen takes over. Signed-in users skip the marketing page
+  // entirely and land on their workspace; guests get the landing.
+  if (status === "loading") {
+    return <BootScreen />;
+  }
+  if (status === "authenticated") {
+    return <Redirect href="/dashboard" />;
+  }
+
   return (
     <View className="flex-1 bg-paper">
       <StatusBar style="dark" backgroundColor="#f4ecda" />
