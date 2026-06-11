@@ -366,7 +366,10 @@ function StatsGrid({
         <Animated.View
           key={it.label}
           entering={FadeInDown.duration(500).delay(80 + i * 60)}
-          style={{ width: "48.5%" }}
+          // flexBasis under 50% leaves room for the 12px gap, flexGrow
+          // stretches the pair back to the full row — a true 2-up grid
+          // on any phone width (4-up never wraps oddly on tablets).
+          style={{ flexGrow: 1, flexBasis: "44%" }}
         >
           <StatCard {...it} onPress={() => router.push(it.href as never)} />
         </Animated.View>

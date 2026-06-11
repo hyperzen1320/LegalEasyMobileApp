@@ -37,6 +37,13 @@
           "backgroundColor": "#f4ecda"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5034fb8e-b755-46e4-b7fe-df3880d50f21"
+      }
+    },
+    "owner": "demonking001"
   }
 }

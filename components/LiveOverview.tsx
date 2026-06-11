@@ -131,17 +131,31 @@ function ActivityRow({
       ]}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initialsOf(row.actorName)}</Text>
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.actor} numberOfLines={1}>
-          {row.actorName}
+        <Text style={styles.avatarText} maxFontSizeMultiplier={1}>
+          {initialsOf(row.actorName)}
         </Text>
-        <Text style={styles.message} numberOfLines={2}>
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowTopLine}>
+          <Text
+            style={styles.actor}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.2}
+          >
+            {cleanName(row.actorName)}
+          </Text>
+          <Text style={styles.timeAgo} maxFontSizeMultiplier={1.1}>
+            {timeAgo(row.createdAt)}
+          </Text>
+        </View>
+        <Text
+          style={styles.message}
+          numberOfLines={2}
+          maxFontSizeMultiplier={1.2}
+        >
           {stripBoldMarkup(row.message)}
         </Text>
       </View>
-      <Text style={styles.timeAgo}>{timeAgo(row.createdAt)}</Text>
     </Pressable>
   );
 }
@@ -181,11 +195,25 @@ function EmptyChambers({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+// Names can carry stray punctuation (e.g. "Tejas —") — initials and the
+// display name only consider real words so the avatar never shows "T—".
+function wordsOf(name: string): string[] {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /\p{L}|\p{N}/u.test(w));
+}
+
+function cleanName(name: string): string {
+  const words = wordsOf(name);
+  return words.length > 0 ? words.join(" ") : name.trim();
+}
+
 function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const a = parts[0]?.[0] ?? "";
-  const b = parts[1]?.[0] ?? "";
-  return (a + b).toUpperCase() || "·";
+  const words = wordsOf(name);
+  if (words.length === 0) return "·";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 function stripBoldMarkup(text: string): string {
@@ -279,46 +307,59 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   avatar: {
-    height: 32,
-    width: 32,
-    borderRadius: 16,
+    height: 34,
+    width: 34,
+    borderRadius: 17,
     backgroundColor: "#0a1124",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
+    // The avatar never shrinks or stretches — the text column flexes.
+    flexShrink: 0,
   },
   avatarText: {
     fontFamily: "Crimson-SemiBold",
-    fontSize: 12,
+    fontSize: 13,
     color: "#ddb074",
+    letterSpacing: 0.5,
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTopLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
   },
   actor: {
+    flex: 1,
     fontFamily: "Manrope-SemiBold",
-    fontSize: 13,
+    fontSize: 13.5,
     color: "#0a1124",
+    marginRight: 8,
   },
   message: {
     fontFamily: "Manrope",
-    fontSize: 12,
+    fontSize: 12.5,
     color: "#4d4538",
     marginTop: 2,
-    lineHeight: 17,
+    lineHeight: 18,
   },
   timeAgo: {
     fontFamily: "DMMono",
     fontSize: 10,
-    color: "#7a7060",
+    color: "#a89c80",
     letterSpacing: 0.4,
-    marginTop: 2,
+    flexShrink: 0,
   },
   divider: {
     height: 1,
     backgroundColor: "#efe5d0",
-    marginLeft: 14 + 32 + 12,
+    marginLeft: 14 + 34 + 12,
   },
   skeletonBlock: {
     backgroundColor: "#efe5d0",

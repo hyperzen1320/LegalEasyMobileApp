@@ -63,6 +63,13 @@ export default function Attendance() {
   const [day, setDay] = useState(() => new Date().getDate());
   const [marking, setMarking] = useState<AttendanceUser | null>(null);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
+  // Person sheet tabs: quick-mark the selected day, or the whole month
+  // as a colour-coded calendar with the running tallies.
+  const [sheetTab, setSheetTab] = useState<"mark" | "month">("mark");
+
+  useEffect(() => {
+    if (marking) setSheetTab("mark");
+  }, [marking]);
 
   useEffect(() => {
     if (status === "authenticated" && !isPartnerAdmin) router.back();
@@ -125,6 +132,23 @@ export default function Attendance() {
     const [y, m] = month.split("-").map(Number);
     return new Date(y, m - 1, day);
   }, [month, day]);
+
+  // Day-number → status for the person currently in the sheet.
+  const markingMonthMap = useMemo(() => {
+    const map = new Map<number, AttendanceStatus>();
+    if (!data || !marking) return map;
+    for (const r of data.records) {
+      if (r.userId !== marking.id) continue;
+      map.set(new Date(r.date).getDate(), r.status);
+    }
+    return map;
+  }, [data, marking]);
+
+  // Weekday of the 1st (0=Sun) for the calendar grid offset.
+  const firstWeekday = useMemo(() => {
+    const [y, m] = month.split("-").map(Number);
+    return new Date(y, m - 1, 1).getDay();
+  }, [month]);
 
   async function mark(user: AttendanceUser, value: AttendanceStatus | "") {
     setSavingStatus(value === "" ? "clear" : value);
@@ -438,20 +462,259 @@ export default function Attendance() {
         )}
       </SafeAreaView>
 
-      {/* Status picker */}
+      {/* Status picker + month card */}
       <Sheet
         visible={Boolean(marking)}
         onClose={savingStatus ? () => {} : () => setMarking(null)}
-        eyebrow={selectedDate.toLocaleDateString("en-IN", {
-          weekday: "long",
-          day: "2-digit",
-          month: "short",
-        })}
+        eyebrow={
+          sheetTab === "mark"
+            ? selectedDate.toLocaleDateString("en-IN", {
+                weekday: "long",
+                day: "2-digit",
+                month: "short",
+              })
+            : monthLabel
+        }
         title={marking?.name ?? ""}
         showClose={!savingStatus}
+        containerStyle={{ maxHeight: "88%" }}
       >
         <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
-          <View className="gap-2.5">
+          {/* Tabs */}
+          <View className="flex-row gap-2 mb-4">
+            {(
+              [
+                { key: "mark", label: "Mark day" },
+                { key: "month", label: "Month view" },
+              ] as const
+            ).map((t) => {
+              const on = sheetTab === t.key;
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setSheetTab(t.key)}
+                  className="flex-1 items-center rounded-lg py-2 active:opacity-85"
+                  style={{
+                    backgroundColor: on ? "#0a1124" : "#ffffff",
+                    borderWidth: 1,
+                    borderColor: on ? "#0a1124" : "#e3d9c0",
+                  }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text
+                    className="text-[12px]"
+                    style={{
+                      fontFamily: "Manrope-SemiBold",
+                      color: on ? "#f5ebd6" : "#0a1124",
+                    }}
+                  >
+                    {t.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {sheetTab === "month" && marking && data ? (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 460 }}
+            >
+              {/* Tallies */}
+              <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                {STATUS_ORDER.map((s) => {
+                  const meta = STATUS_META[s];
+                  const summary = data.summary.perUser[marking.id];
+                  const value = summary
+                    ? {
+                        present: summary.present,
+                        absent: summary.absent,
+                        half_day: summary.halfDay,
+                        leave: summary.leave,
+                        holiday: summary.holiday,
+                      }[s]
+                    : 0;
+                  return (
+                    <View
+                      key={s}
+                      className="flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5"
+                      style={{ backgroundColor: meta.bg }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "DMMono-Medium",
+                          fontSize: 11,
+                          color: meta.fg,
+                        }}
+                      >
+                        {meta.short}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: "Manrope-SemiBold",
+                          fontSize: 12,
+                          color: meta.fg,
+                        }}
+                      >
+                        {value}
+                      </Text>
+                    </View>
+                  );
+                })}
+                <View
+                  className="flex-row items-center rounded-md px-2.5 py-1.5"
+                  style={{ backgroundColor: "#0a1124" }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Manrope-SemiBold",
+                      fontSize: 12,
+                      color: "#f5ebd6",
+                    }}
+                  >
+                    {data.summary.perUser[marking.id]?.attendancePct ?? 0}%
+                  </Text>
+                </View>
+              </View>
+
+              {/* Calendar */}
+              <View className="mt-4 rounded-xl bg-app-paper p-3" style={{ borderWidth: 1, borderColor: "#e3d9c0" }}>
+                <View className="flex-row">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                    <Text
+                      key={`${d}-${i}`}
+                      className="flex-1 text-center text-[9px] uppercase"
+                      style={{
+                        fontFamily: "DMMono-Medium",
+                        letterSpacing: 1,
+                        color: "#a89c80",
+                      }}
+                    >
+                      {d}
+                    </Text>
+                  ))}
+                </View>
+                <View className="flex-row flex-wrap mt-1.5">
+                  {Array.from({ length: firstWeekday }).map((_, i) => (
+                    <View key={`pad-${i}`} style={{ width: "14.28%" }} />
+                  ))}
+                  {Array.from({ length: data.totalDays }, (_, i) => i + 1).map(
+                    (d) => {
+                      const status = markingMonthMap.get(d);
+                      const meta = status ? STATUS_META[status] : null;
+                      const selectable = d <= maxDay;
+                      const isSelected = d === day;
+                      return (
+                        <View
+                          key={d}
+                          style={{ width: "14.28%", padding: 2.5 }}
+                        >
+                          <Pressable
+                            onPress={() => {
+                              if (!selectable) return;
+                              setDay(d);
+                              setSheetTab("mark");
+                            }}
+                            disabled={!selectable}
+                            className="items-center justify-center rounded-lg active:opacity-75"
+                            style={{
+                              aspectRatio: 1,
+                              backgroundColor: meta ? meta.bg : "#faf6ed",
+                              borderWidth: isSelected ? 2 : 1,
+                              borderColor: isSelected
+                                ? "#0a1124"
+                                : meta
+                                  ? "transparent"
+                                  : "#efe5d0",
+                              opacity: selectable ? 1 : 0.35,
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Day ${d}${meta ? ` — ${meta.label}` : ""}`}
+                          >
+                            <Text
+                              style={{
+                                fontFamily: "DMMono-Medium",
+                                fontSize: 12,
+                                color: meta ? meta.fg : "#7a7060",
+                              }}
+                            >
+                              {d}
+                            </Text>
+                            {meta ? (
+                              <Text
+                                style={{
+                                  fontFamily: "DMMono-Medium",
+                                  fontSize: 7.5,
+                                  letterSpacing: 0.5,
+                                  color: meta.fg,
+                                  marginTop: 1,
+                                }}
+                              >
+                                {meta.short}
+                              </Text>
+                            ) : null}
+                          </Pressable>
+                        </View>
+                      );
+                    }
+                  )}
+                </View>
+                {/* Legend */}
+                <View
+                  className="flex-row flex-wrap mt-2.5 pt-2.5"
+                  style={{
+                    gap: 10,
+                    borderTopWidth: 1,
+                    borderTopColor: "#efe5d0",
+                  }}
+                >
+                  {STATUS_ORDER.map((s) => {
+                    const meta = STATUS_META[s];
+                    return (
+                      <View
+                        key={s}
+                        className="flex-row items-center"
+                        style={{ gap: 4 }}
+                      >
+                        <View
+                          style={{
+                            height: 9,
+                            width: 9,
+                            borderRadius: 3,
+                            backgroundColor: meta.bg,
+                            borderWidth: 1,
+                            borderColor: meta.fg,
+                          }}
+                        />
+                        <Text
+                          style={{
+                            fontFamily: "Manrope",
+                            fontSize: 10,
+                            color: "#4d4538",
+                          }}
+                        >
+                          {meta.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+              <Text
+                className="mt-2.5 text-[11px] text-app-fg-muted"
+                style={{ fontFamily: "Manrope" }}
+              >
+                Tap a day to mark it.
+              </Text>
+              <View style={{ height: 8 }} />
+            </ScrollView>
+          ) : null}
+
+          <View
+            className="gap-2.5"
+            style={{ display: sheetTab === "mark" ? "flex" : "none" }}
+          >
             {STATUS_ORDER.map((s) => {
               const meta = STATUS_META[s];
               const current =

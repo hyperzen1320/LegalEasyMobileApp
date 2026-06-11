@@ -9,8 +9,11 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import BoardSettingsSheet from "../../../components/workflow/BoardSettingsSheet";
+import RequestDeleteSheet from "../../../components/workflow/RequestDeleteSheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -23,6 +26,7 @@ import {
   ApiError,
   type PartnerBoard,
   type BoardColor,
+  type DeleteRequestRequiredError,
 } from "../../../lib/api";
 import {
   BOARD_COLOR_STYLES,
@@ -37,6 +41,10 @@ export default function Workflow() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  // "⋯" on a tile → rename / recolour / delete without opening the board.
+  const [settingsFor, setSettingsFor] = useState<PartnerBoard | null>(null);
+  const [requestTarget, setRequestTarget] =
+    useState<DeleteRequestRequiredError | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -138,6 +146,7 @@ export default function Workflow() {
                   onOpen={() =>
                     router.push(`/(home)/workflow/${item.id}` as never)
                   }
+                  onSettings={() => setSettingsFor(item)}
                 />
               )}
               showsVerticalScrollIndicator={false}
@@ -213,6 +222,43 @@ export default function Workflow() {
         onCreated={(b) => {
           setBoards((prev) => [b, ...prev]);
           setCreating(false);
+        }}
+      />
+
+      {settingsFor ? (
+        <BoardSettingsSheet
+          visible={Boolean(settingsFor)}
+          onClose={() => setSettingsFor(null)}
+          boardId={settingsFor.id}
+          title={settingsFor.title}
+          color={settingsFor.color}
+          onSaved={({ title, color }) => {
+            setBoards((prev) =>
+              prev.map((b) =>
+                b.id === settingsFor.id ? { ...b, title, color } : b
+              )
+            );
+            setSettingsFor(null);
+          }}
+          onDeleted={() => {
+            setBoards((prev) =>
+              prev.filter((b) => b.id !== settingsFor.id)
+            );
+            setSettingsFor(null);
+          }}
+          onDeleteNeedsRequest={(target) => {
+            setSettingsFor(null);
+            setRequestTarget(target);
+          }}
+        />
+      ) : null}
+
+      <RequestDeleteSheet
+        target={requestTarget}
+        onClose={() => setRequestTarget(null)}
+        onSubmitted={() => {
+          setRequestTarget(null);
+          Alert.alert("Sent for review", "The office admin has been notified.");
         }}
       />
     </View>
@@ -291,9 +337,11 @@ function TopBar({
 function BoardTile({
   board,
   onOpen,
+  onSettings,
 }: {
   board: PartnerBoard;
   onOpen: () => void;
+  onSettings: () => void;
 }) {
   const styles =
     BOARD_COLOR_STYLES[board.color] ?? BOARD_COLOR_STYLES.copper;
@@ -380,6 +428,16 @@ function BoardTile({
             </Text>
           ) : null}
         </View>
+        <Pressable
+          onPress={onSettings}
+          hitSlop={8}
+          className="h-7 w-7 items-center justify-center rounded-md active:opacity-60"
+          style={{ backgroundColor: "#efe5d0" }}
+          accessibilityRole="button"
+          accessibilityLabel={`Settings for ${board.title}`}
+        >
+          <Feather name="more-horizontal" size={14} color="#8a5821" />
+        </Pressable>
         <View
           className="h-7 w-7 items-center justify-center rounded-md"
           style={{ backgroundColor: "#efe5d0" }}
