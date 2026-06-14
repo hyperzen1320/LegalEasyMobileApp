@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Animated, {
   Easing,
@@ -104,27 +104,9 @@ export default function BootScreen() {
             opacity: 0.85,
           }}
         />
-        <Text
-          style={{
-            fontFamily: "Fraunces-SemiBold",
-            fontSize: 52,
-            color: PAPER,
-            lineHeight: 58,
-          }}
-          maxFontSizeMultiplier={1}
-        >
-          L
-        </Text>
-        <View
-          style={{
-            position: "absolute",
-            top: 26,
-            right: 30,
-            height: 9,
-            width: 9,
-            borderRadius: 5,
-            backgroundColor: BRASS,
-          }}
+        <Image
+          source={require("../assets/logo.png")}
+          style={{ height: 74, width: 74, resizeMode: "contain" }}
         />
       </Animated.View>
 
@@ -134,7 +116,7 @@ export default function BootScreen() {
         style={{ fontFamily: "Fraunces-Medium", color: INK }}
         maxFontSizeMultiplier={1.2}
       >
-        LegalEasy
+        Legalezi
       </Text>
       <Text
         className="mt-1.5 text-[10px] uppercase"

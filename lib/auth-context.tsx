@@ -42,7 +42,7 @@ export type AuthState = {
   // Partner-side office admin (chambers owner). Drives "+ New user",
   // delete-request approve/reject, etc.
   isPartnerAdmin: boolean;
-  // Global LegalEasy admin. Drives access to the (admin) shell.
+  // Global Legalezi admin. Drives access to the (admin) shell.
   isGlobalAdmin: boolean;
   // Set when the boot probe failed (typically expired session). Cleared
   // on the next successful refresh().
