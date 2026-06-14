@@ -5,65 +5,77 @@ import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import {
-  partnerCreateCase,
   partnerGetCase,
+  partnerUpdateCase,
   ApiError,
   type PartnerCaseInput,
-} from "../../../lib/api";
+} from "../../../../lib/api";
 import CaseForm, {
   type CaseFormInitial,
-} from "../../../components/cases/CaseForm";
+} from "../../../../components/cases/CaseForm";
 
-export default function NewCase() {
+export default function EditCase() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const caseId = String(id);
+
+  const [initial, setInitial] = useState<CaseFormInitial | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // "Duplicate matter": ?from=<caseId> pre-fills the parties and court from an
-  // existing case. Identifiers and dates stay blank — those are what make the
-  // new matter a different matter. The form mounts only once the pre-fill is
-  // ready so its initial state is correct.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const [initial, setInitial] = useState<CaseFormInitial | undefined>(undefined);
-  const [loadingInitial, setLoadingInitial] = useState(!!from);
-
   useEffect(() => {
-    if (!from) return;
     let alive = true;
     (async () => {
       try {
-        const res = await partnerGetCase(String(from));
+        const res = await partnerGetCase(caseId);
         if (!alive) return;
         const c = res.case;
         setInitial({
+          fileNo: c.fileNo || "",
+          caseNo: c.caseNo || "",
+          iaNumbers: c.iaNumbers || "",
+          cnr: c.cnr || "",
           clientName: c.clientName || "",
           appearingFor: c.appearingFor || "Petitioner",
-          clientPhone: c.clientPhone || "",
           clientWhatsapp: c.clientWhatsapp || "",
-          clientAddress: c.clientAddress || "",
+          clientPhone: c.clientPhone || "",
           oppositeParty: c.oppositeParty || "",
           oppositeAdvocate: c.oppositeAdvocate || "",
           courtName: c.courtName || "",
+          status: c.status || "Filed",
+          previousDate: c.lastHearingDate ? c.lastHearingDate.slice(0, 10) : "",
+          nextHearingDate: c.nextHearingDate
+            ? c.nextHearingDate.slice(0, 10)
+            : "",
           courtPlace: c.courtPlace || "",
           courtHall: c.courtHall || "",
+          clientAddress: c.clientAddress || "",
         });
-      } catch {
-        // Pre-fill is best-effort — a blank form is a fine fallback.
-      } finally {
-        if (alive) setLoadingInitial(false);
+      } catch (err) {
+        if (alive) {
+          setLoadError(
+            err instanceof ApiError ? err.message : "Couldn't load this case."
+          );
+        }
       }
     })();
     return () => {
       alive = false;
     };
-  }, [from]);
+  }, [caseId]);
 
   async function onSubmit(payload: PartnerCaseInput) {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await partnerCreateCase(payload);
-      router.replace(`/(home)/cases/${res.id}` as never);
+      const res = await partnerUpdateCase(caseId, payload);
+      // Web parity: moving a matter to "Disposed" sends it to the archive.
+      if (res.case.status === "Disposed") {
+        router.replace("/(home)/cases/disposed" as never);
+      } else {
+        router.replace(`/(home)/cases/${caseId}` as never);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save");
       setSubmitting(false);
@@ -75,16 +87,25 @@ export default function NewCase() {
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
         <TopBar />
-        {loadingInitial ? (
+        {loadError ? (
+          <View className="flex-1 items-center justify-center px-8">
+            <Text
+              className="text-center text-[14px] text-app-fg-muted"
+              style={{ fontFamily: "Manrope" }}
+            >
+              {loadError}
+            </Text>
+          </View>
+        ) : !initial ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
           <CaseForm
-            eyebrow="New matter"
-            title="Add a Case"
-            subtitle="Capture the matter details — you can update next date later."
-            submitLabel="Save Case"
+            eyebrow="Edit matter"
+            title="Edit Case"
+            subtitle="Update any detail and save — your changes sync to web instantly."
+            submitLabel="Save Changes"
             initial={initial}
             submitting={submitting}
             error={error}
@@ -111,7 +132,7 @@ function TopBar() {
         className="text-[14px] font-semibold text-app-ink"
         style={{ fontFamily: "Manrope-SemiBold" }}
       >
-        New Case
+        Edit Case
       </Text>
     </View>
   );

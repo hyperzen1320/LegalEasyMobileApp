@@ -19,11 +19,8 @@ import {
   ApiError,
   type PartnerCase,
 } from "../../lib/api";
-import {
-  SheetField,
-  DateField,
-  formatDateForDisplay,
-} from "../CaseFields";
+import { DateField, formatDateForDisplay } from "../CaseFields";
+import StatusCombobox from "./StatusCombobox";
 import DocumentsPanel from "./DocumentsPanel";
 import DisposePanel from "./DisposePanel";
 
@@ -31,18 +28,6 @@ import DisposePanel from "./DisposePanel";
 // full-screen on phones; the Case Vault renders it as the right pane of
 // the tablet two-pane. The host owns chrome (top bar / status bar) and
 // what "deleted" means for navigation.
-
-const STATUS_OPTIONS = [
-  "Filed",
-  "Notice",
-  "Pleadings",
-  "Issues",
-  "Evidence",
-  "Arguments",
-  "Reserved",
-  "Judgment",
-  "Disposed",
-];
 
 export default function CaseDetailView({
   caseId,
@@ -164,7 +149,47 @@ export default function CaseDetailView({
               />
             </Animated.View>
 
-            <Animated.View entering={FadeInDown.duration(380).delay(420)}>
+            <Animated.View entering={FadeInDown.duration(380).delay(400)}>
+              <Pressable
+                onPress={() =>
+                  router.push(`/(home)/cases/edit/${data.case.id}` as never)
+                }
+                className="mt-4 rounded-xl bg-app-paper p-4 flex-row items-center gap-3 active:opacity-85"
+                style={{
+                  shadowColor: "#0a1124",
+                  shadowOpacity: 0.05,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 1,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Edit this matter"
+              >
+                <View
+                  className="h-9 w-9 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: "#efe5d0" }}
+                >
+                  <Feather name="edit-3" size={15} color="#8a5821" />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className="text-[14px] text-app-ink"
+                    style={{ fontFamily: "Manrope-SemiBold" }}
+                  >
+                    Edit this matter
+                  </Text>
+                  <Text
+                    className="text-[11px] mt-0.5 text-app-fg-muted"
+                    style={{ fontFamily: "Manrope" }}
+                  >
+                    Change any detail — parties, court, dates, status.
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={15} color="#8a5821" />
+              </Pressable>
+            </Animated.View>
+
+            <Animated.View entering={FadeInDown.duration(380).delay(430)}>
               <Pressable
                 onPress={() =>
                   router.push(
@@ -581,10 +606,9 @@ function UpdateHearingCard({
           value={date}
           onChange={setDate}
         />
-        <SheetField
+        <StatusCombobox
           label="Status / Stage"
           value={status}
-          options={STATUS_OPTIONS}
           onChange={setStatus}
         />
       </View>
