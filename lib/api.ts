@@ -527,6 +527,23 @@ export async function partnerDeleteCase(
   return api(`/api/app/cases/${id}`, { method: "DELETE" });
 }
 
+/* ─── Office WhatsApp notice template ─── */
+
+// Any user can read the office's notice template (their WhatsApp button uses
+// it); only the partner admin can PATCH it.
+export async function partnerGetNoticeTemplate(): Promise<{ template: string }> {
+  return api("/api/app/office/notice-template", { method: "GET" });
+}
+
+export async function partnerSaveNoticeTemplate(
+  template: string
+): Promise<{ ok: true; template: string }> {
+  return api("/api/app/office/notice-template", {
+    method: "PATCH",
+    body: JSON.stringify({ template }),
+  });
+}
+
 /* ─── Clients ─── */
 
 export type PartnerClient = {

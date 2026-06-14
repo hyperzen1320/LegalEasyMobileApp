@@ -17,12 +17,17 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import {
   partnerGetProfile,
   partnerUpdateProfile,
+  partnerGetNoticeTemplate,
   ApiError,
   type PartnerProfile,
 } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
+import NoticeTemplateEditor from "../../../components/NoticeTemplateEditor";
 
 export default function MyProfile() {
+  const { isPartnerAdmin } = useAuth();
   const [profile, setProfile] = useState<PartnerProfile | null>(null);
+  const [noticeTemplate, setNoticeTemplate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,8 +46,12 @@ export default function MyProfile() {
 
   const load = useCallback(async () => {
     try {
-      const data = await partnerGetProfile();
+      const [data, tpl] = await Promise.all([
+        partnerGetProfile(),
+        partnerGetNoticeTemplate().catch(() => ({ template: "" })),
+      ]);
       setProfile(data.profile);
+      setNoticeTemplate(tpl.template);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -309,6 +318,15 @@ export default function MyProfile() {
                   </Pressable>
                 )}
               </View>
+
+              {noticeTemplate !== null ? (
+                <View className="mt-6">
+                  <NoticeTemplateEditor
+                    initialTemplate={noticeTemplate}
+                    isAdmin={isPartnerAdmin}
+                  />
+                </View>
+              ) : null}
             </ScrollView>
           </KeyboardAvoidingView>
         )}
