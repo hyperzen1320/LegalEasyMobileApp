@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
@@ -11,6 +12,7 @@ export default function HomeLayout() {
   // Senior Desk unread total rides on the More tab (web puts it on the
   // sidebar item). The singleton polls every 12s while the app is open.
   const { unread } = useChatUnread();
+  const insets = useSafeAreaInsets();
 
   // Two redirects this layout enforces:
   //  - no session → back to signin
@@ -45,19 +47,25 @@ export default function HomeLayout() {
         animation: "shift",
         tabBarActiveTintColor: "#c5853a",
         tabBarInactiveTintColor: "#7a7060",
-        // No manual height/inset math — the navigator adds the device's
-        // bottom safe area itself, so the bar clears gesture pills AND
-        // 3-button navigation on every screen size.
+        // Explicitly reserve the device's bottom inset. With edge-to-edge
+        // enabled, leaving it to the navigator lets the system nav bar paint
+        // over the labels — so we size the bar = content + inset and pad the
+        // bottom by the inset (min 8). Labels then clear the gesture pill AND
+        // 3-button navigation on every device size.
         tabBarStyle: {
           backgroundColor: "#0a1124",
           borderTopColor: "#1f2a45",
           borderTopWidth: 1,
           paddingTop: 6,
+          height: 58 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
         },
+        // 9.5px + tight tracking keeps all five labels on one line on the
+        // narrowest phones.
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 9.5,
           fontFamily: "DMMono-Medium",
-          letterSpacing: 1.4,
+          letterSpacing: 0.6,
           textTransform: "uppercase",
           marginTop: 4,
         },
@@ -116,7 +124,15 @@ export default function HomeLayout() {
       <Tabs.Screen name="clients" options={{ href: null }} />
       <Tabs.Screen name="courts" options={{ href: null }} />
       <Tabs.Screen name="ai" options={{ href: null }} />
-      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color }) => (
+            <Feather name="user" size={20} color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen name="users" options={{ href: null }} />
       <Tabs.Screen name="workflow" options={{ href: null }} />
       <Tabs.Screen name="senior-desk" options={{ href: null }} />
