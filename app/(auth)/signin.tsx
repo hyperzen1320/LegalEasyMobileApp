@@ -1,11 +1,5 @@
-import {
-  ScrollView,
-  View,
-  Text,
-  Pressable,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, Text, Pressable } from "react-native";
+import KeyboardAwareScreen from "../../components/KeyboardAwareScreen";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter, Link } from "expo-router";
@@ -55,15 +49,7 @@ export default function SignIn() {
     <View className="flex-1 bg-paper">
       <StatusBar style="dark" backgroundColor="#f4ecda" />
       <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          className="flex-1"
-        >
-          <ScrollView
-            contentContainerClassName="grow pb-12"
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+        <KeyboardAwareScreen contentContainerClassName="grow pb-12">
             {/* Masthead */}
             <View className="border-b border-rule/40 px-5 py-2.5">
               <View className="flex-row items-center justify-between">
@@ -247,8 +233,7 @@ export default function SignIn() {
                 </Text>
               </Animated.View>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScreen>
       </SafeAreaView>
     </View>
   );
