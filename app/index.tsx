@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, Pressable, Platform } from "react-native";
+import { ScrollView, View, Text, Pressable, Platform, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Redirect, useRouter } from "expo-router";
@@ -54,7 +54,7 @@ function TopBar() {
         <View className="flex-row items-center gap-2.5">
           <BrandMark />
           <Text className="font-display text-[19px] tracking-tight text-ink leading-none">
-            LegalEasy
+            Legalezi
           </Text>
         </View>
         <Pressable
@@ -73,12 +73,10 @@ function TopBar() {
 
 function BrandMark() {
   return (
-    <View className="relative h-7 w-7 bg-ink items-center justify-center">
-      <Text className="font-display-bold text-paper text-[13px] leading-none">
-        L
-      </Text>
-      <View className="absolute right-[3px] top-[3px] h-1 w-1 rounded-full bg-brass" />
-    </View>
+    <Image
+      source={require("../assets/logo.png")}
+      style={{ height: 28, width: 16, resizeMode: "contain" }}
+    />
   );
 }
 

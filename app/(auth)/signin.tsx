@@ -241,7 +241,7 @@ export default function SignIn() {
                     className="font-mono text-[11px] uppercase text-ink"
                     style={{ letterSpacing: 2 }}
                   >
-                    chambers@legaleasy.in
+                    chambers@legalezi.com
                   </Text>
                   .
                 </Text>

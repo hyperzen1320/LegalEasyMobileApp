@@ -95,7 +95,7 @@ export default function SubscriptionsList() {
               <Text className="mt-1.5 font-plex text-[12px] leading-[19px] text-admin-fg">
                 Saves push to the database AND refresh the public landing page
                 instantly. The Trial plan is internal — only the other three
-                show on legaleasy.in.
+                show on legalezi.com.
               </Text>
             </View>
           </ScrollView>

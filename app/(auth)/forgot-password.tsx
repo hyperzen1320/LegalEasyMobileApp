@@ -8,7 +8,7 @@ import PrimaryButton from "../../components/PrimaryButton";
 // There is no self-serve email reset — by design, matching the web app:
 // passwords are reset by a person you already trust. Office members ask
 // their office admin (Users → reset password); office admins ask the
-// LegalEasy desk. This screen says exactly that instead of pretending to
+// Legalezi desk. This screen says exactly that instead of pretending to
 // send a reset link.
 
 const STEPS = [
@@ -20,7 +20,7 @@ const STEPS = [
   {
     index: "02",
     title: "Office admins",
-    body: "Chambers owners are reset by the LegalEasy desk. Reach the desk on the channel you onboarded with and a new key will be cut for you.",
+    body: "Chambers owners are reset by the Legalezi desk. Reach the desk on the channel you onboarded with and a new key will be cut for you.",
   },
   {
     index: "03",
@@ -103,7 +103,7 @@ export default function ForgotPassword() {
               entering={FadeInDown.duration(600).delay(280)}
               className="mt-5 font-body text-[16px] leading-[26px] text-ink-2"
             >
-              LegalEasy doesn&rsquo;t email reset links. A person you already
+              Legalezi doesn&rsquo;t email reset links. A person you already
               trust resets your password — here&rsquo;s who to ask.
             </Animated.Text>
 
