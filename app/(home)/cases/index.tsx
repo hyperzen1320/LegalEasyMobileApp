@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -15,6 +17,8 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { FlashList } from "@shopify/flash-list";
 import {
   partnerListCases,
+  partnerDeleteCase,
+  ApiError,
   type CaseListFilters,
   type PartnerCase,
 } from "../../../lib/api";
@@ -337,6 +341,38 @@ export default function CaseVault() {
                       ? setSelectedId(item.id)
                       : router.push(`/(home)/cases/${item.id}` as never)
                   }
+                  onEdit={() =>
+                    router.push(`/(home)/cases/edit/${item.id}` as never)
+                  }
+                  onDelete={() => {
+                    Alert.alert(
+                      `Delete ${item.caseNo}?`,
+                      "The matter will be removed from the Case Vault, dashboard and hearing track. Soft delete — recoverable on request.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: async () => {
+                            try {
+                              await partnerDeleteCase(item.id);
+                              setCases((prev) =>
+                                prev.filter((x) => x.id !== item.id)
+                              );
+                              setTotal((t) => Math.max(0, t - 1));
+                            } catch (err) {
+                              Alert.alert(
+                                "Couldn't delete",
+                                err instanceof ApiError
+                                  ? err.message
+                                  : "Try again."
+                              );
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
                 />
               )}
               showsVerticalScrollIndicator={false}
@@ -571,12 +607,17 @@ function TopBar({
 function CaseCard({
   c,
   onPress,
+  onEdit,
+  onDelete,
   selected,
 }: {
   c: PartnerCase;
   onPress: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
   selected?: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const next = c.nextHearingDate ? new Date(c.nextHearingDate) : null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -594,6 +635,7 @@ function CaseCard({
   const courtLine = [c.courtName, c.courtPlace].filter(Boolean).join(", ");
 
   return (
+    <>
     <Pressable
       onPress={onPress}
       className="rounded-xl bg-app-paper p-4 active:opacity-90"
@@ -731,9 +773,92 @@ function CaseCard({
             </Text>
           </View>
         )}
-        <Feather name="chevron-right" size={14} color="#8a5821" />
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          hitSlop={10}
+          className="h-7 w-7 items-center justify-center rounded-md active:opacity-50"
+          style={{ backgroundColor: "#efe5d0" }}
+          accessibilityLabel="Case actions"
+        >
+          <Feather name="more-horizontal" size={16} color="#8a5821" />
+        </Pressable>
       </View>
     </Pressable>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          onPress={() => setMenuOpen(false)}
+          className="flex-1"
+          style={{ backgroundColor: "rgba(10,17,36,0.55)" }}
+        >
+          <View
+            className="mt-auto rounded-t-3xl bg-app-paper px-5 pt-3 pb-8"
+            style={{
+              shadowColor: "#0a1124",
+              shadowOpacity: 0.2,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: -6 },
+              elevation: 12,
+            }}
+            onStartShouldSetResponder={() => true}
+          >
+            <View
+              className="self-center mb-3 h-1.5 w-12 rounded-full"
+              style={{ backgroundColor: "#e3d9c0" }}
+            />
+            <Text
+              className="text-[10px] uppercase text-app-copper-deep mb-1"
+              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+              numberOfLines={1}
+            >
+              {c.caseNo}
+            </Text>
+            <Pressable
+              onPress={() => {
+                setMenuOpen(false);
+                onEdit();
+              }}
+              className="flex-row items-center gap-3 py-3.5 active:opacity-50"
+              style={{ borderBottomWidth: 1, borderBottomColor: "#efe5d0" }}
+            >
+              <Feather name="edit-3" size={17} color="#0a1124" />
+              <Text
+                style={{
+                  fontFamily: "Manrope-SemiBold",
+                  fontSize: 15,
+                  color: "#0a1124",
+                }}
+              >
+                Edit matter
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setMenuOpen(false);
+                onDelete();
+              }}
+              className="flex-row items-center gap-3 py-3.5 active:opacity-50"
+            >
+              <Feather name="trash-2" size={17} color="#c14a37" />
+              <Text
+                style={{
+                  fontFamily: "Manrope-SemiBold",
+                  fontSize: 15,
+                  color: "#c14a37",
+                }}
+              >
+                Delete matter
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
