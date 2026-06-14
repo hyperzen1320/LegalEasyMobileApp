@@ -13,6 +13,7 @@ import {
   getToken,
   login as apiLogin,
   logout as apiLogout,
+  setUnauthorizedHandler,
   type MobileUser,
   type MobilePartner,
 } from "./api";
@@ -22,12 +23,13 @@ import {
 // their own state. The provider runs one boot probe on mount, then every
 // downstream screen reads the snapshot via useAuth().
 //
-// What's intentionally NOT here yet:
-//  - A global 401 interceptor that calls logout() when any /api/app/*
-//    request returns 401. The screens currently catch this individually;
-//    centralising it needs an imperative bridge from lib/api.ts back
-//    into React state (a module-level subscribable). Deferred to a
-//    follow-up PR so this one stays focused on the provider itself.
+// The global 401 interceptor lives here too: lib/api.ts notifies through
+// setUnauthorizedHandler() whenever any authenticated request comes back
+// 401 (throttled, real HTTP 401s only — never network failures), and the
+// provider clears the dead token + flips to guest. The (home)/(admin)
+// layout redirects handle navigation from there.
+//
+// What's intentionally NOT here:
 //  - Token refresh — JWTs are long-lived and the server doesn't issue
 //    refresh tokens today, so there's nothing to refresh against.
 
@@ -126,6 +128,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Bridge from lib/api.ts: any authenticated request returning 401 means
+  // the stored token is dead — drop it and become a guest in one place
+  // instead of every screen handling it separately.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      apiLogout().catch(() => undefined);
+      applyGuest("Your session expired. Please sign in again.");
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [applyGuest]);
 
   const login = useCallback(
     async (email: string, password: string) => {

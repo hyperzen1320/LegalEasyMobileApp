@@ -40,8 +40,24 @@ import AddListComposer from "../../../../components/workflow/AddListComposer";
 import EdgePill from "../../../../components/workflow/EdgePill";
 import CardActionsSheet from "../../../../components/workflow/CardActionsSheet";
 import RequestDeleteSheet from "../../../../components/workflow/RequestDeleteSheet";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import {
+  useBoardDnd,
+  DropIndicator,
+} from "../../../../components/workflow/dnd/useBoardDnd";
+import { useBreakpoint } from "../../../../lib/useBreakpoint";
+import BoardExportSheet from "../../../../components/workflow/BoardExportSheet";
+import BoardSettingsSheet from "../../../../components/workflow/BoardSettingsSheet";
+import BoardSnapshotView from "../../../../components/workflow/BoardSnapshotView";
+import { exportBoardXlsx } from "../../../../lib/exports";
+import {
+  captureBoardPng,
+  boardPngToPdf,
+} from "../../../../lib/boardSnapshot";
+import { File } from "expo-file-system";
+import type { DownloadedFile } from "../../../../lib/files";
 
-const LIST_WIDTH = 280;
 const TEMP_PREFIX = "tmp:";
 
 function tempId(): string {
@@ -59,9 +75,74 @@ export default function BoardDetail() {
   const boardId = String(id);
   const router = useRouter();
 
+  // Compact keeps a peek of the next column (the "there's more" cue);
+  // bigger windows get fixed, comfortable column widths and free scroll.
+  const { bp, width: windowWidth, isExpanded } = useBreakpoint();
+  const listWidth =
+    bp === "compact"
+      ? Math.min(300, Math.round(windowWidth * 0.78))
+      : bp === "medium"
+        ? 320
+        : 340;
+
   const [data, setData] = useState<BoardFullResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // PNG/PDF snapshot: mount the full-content capture view (occluded by
+  // an opaque scrim), wait one laid-out frame, photograph it.
+  const [snapshotting, setSnapshotting] = useState(false);
+  const snapshotInnerRef = useRef<View | null>(null);
+  const snapshotReadyRef = useRef<
+    ((s: { w: number; h: number }) => void) | null
+  >(null);
+
+  const capture = useCallback(
+    async (format: "png" | "pdf"): Promise<DownloadedFile> => {
+      if (!data) throw new Error("Board not loaded yet.");
+      setSnapshotting(true);
+      try {
+        const size = await new Promise<{ w: number; h: number }>(
+          (resolve, reject) => {
+            snapshotReadyRef.current = resolve;
+            setTimeout(
+              () => reject(new Error("Snapshot timed out — try again.")),
+              8000
+            );
+          }
+        );
+        const png = await captureBoardPng(snapshotInnerRef, size.w, size.h);
+        const slug =
+          data.board.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "board";
+        const d = new Date();
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        if (format === "png") {
+          return {
+            uri: png.uri,
+            filename: `${slug}-${stamp}.png`,
+            mime: "image/png",
+            size: new File(png.uri).size,
+          };
+        }
+        const pdfUri = await boardPngToPdf(png, data.board.title);
+        return {
+          uri: pdfUri,
+          filename: `${slug}-${stamp}.pdf`,
+          mime: "application/pdf",
+          size: new File(pdfUri).size,
+        };
+      } finally {
+        snapshotReadyRef.current = null;
+        setSnapshotting(false);
+      }
+    },
+    [data]
+  );
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -128,10 +209,17 @@ export default function BoardDetail() {
     }
     if (!needsResync) return;
     if (resyncTimer.current) return;
-    resyncTimer.current = setTimeout(() => {
+    const fire = () => {
+      // Mid-drag, defer — a refetch re-renders the columns under the
+      // finger. Re-arm until the drop lands.
+      if (isDraggingRef.current) {
+        resyncTimer.current = setTimeout(fire, 800);
+        return;
+      }
       resyncTimer.current = null;
       load();
-    }, 800);
+    };
+    resyncTimer.current = setTimeout(fire, 800);
   }, [live.newRows, data?.currentUserId, load]);
 
   // Pending delete-requests badge (admin only effectively)
@@ -197,6 +285,70 @@ export default function BoardDetail() {
     return m;
   }, [data]);
 
+  const sortedLists = useMemo(
+    () => (data ? data.lists.slice().sort((a, b) => a.sortOrder - b.sortOrder) : []),
+    [data]
+  );
+
+  /* ─── Drag & drop ─── */
+
+  // Precise optimistic move (with index) — the drag counterpart of the
+  // sheet's moveCard. Re-sequences sortOrder locally exactly the way the
+  // server will, then reconciles or rolls back.
+  const moveCardTo = useCallback(
+    async (taskId: string, toListId: string, toIndex: number) => {
+      if (!data || isTemp(taskId) || isTemp(toListId)) return;
+      const snapshot = data;
+      setData((prev) => {
+        if (!prev) return prev;
+        const t = prev.tasks.find((x) => x.id === taskId);
+        if (!t) return prev;
+        const without = prev.tasks.filter((x) => x.id !== taskId);
+        const target = without
+          .filter((x) => x.listId === toListId)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        target.splice(Math.min(toIndex, target.length), 0, {
+          ...t,
+          listId: toListId,
+        });
+        const reseqTarget = target.map((x, i) => ({ ...x, sortOrder: i }));
+        let rest = without.filter((x) => x.listId !== toListId);
+        if (t.listId !== toListId) {
+          const src = rest
+            .filter((x) => x.listId === t.listId)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((x, i) => ({ ...x, sortOrder: i }));
+          rest = [...rest.filter((x) => x.listId !== t.listId), ...src];
+        }
+        return { ...prev, tasks: [...rest, ...reseqTarget] };
+      });
+      try {
+        await partnerMoveTask(taskId, { toListId, toIndex });
+      } catch (err) {
+        setData(snapshot);
+        Alert.alert(
+          "Couldn't move card",
+          err instanceof ApiError ? err.message : "Try again."
+        );
+      }
+    },
+    [data]
+  );
+
+  const dnd = useBoardDnd({
+    listWidth,
+    screenWidth: windowWidth,
+    lists: sortedLists,
+    tasksByList,
+    isTemp,
+    onMove: moveCardTo,
+  });
+
+  // Cross-user resyncs mid-drag would yank the board out from under the
+  // finger — hold them until the drop lands.
+  const isDraggingRef = useRef(false);
+  isDraggingRef.current = dnd.isDragging;
+
   /* ─── Mutations: optimistic ─── */
   const addList = useCallback(
     async (title: string) => {
@@ -207,7 +359,7 @@ export default function BoardDetail() {
         title,
         sortOrder: data.lists.length,
         position: { x: 0, y: 0 },
-        width: LIST_WIDTH,
+        width: listWidth,
         color: null,
       };
       setData((prev) =>
@@ -243,7 +395,7 @@ export default function BoardDetail() {
         );
       }
     },
-    [data, boardId]
+    [data, boardId, listWidth]
   );
 
   const addCard = useCallback(
@@ -374,6 +526,8 @@ export default function BoardDetail() {
           presenceCount={presence.length}
           unreadCount={live.unreadCount + pendingCount}
           onBack={() => router.back()}
+          onExport={data ? () => setExporting(true) : null}
+          onSettings={data ? () => setSettingsOpen(true) : null}
           onBell={() => {
             live.markSeen();
             router.push(
@@ -412,11 +566,20 @@ export default function BoardDetail() {
             </Pressable>
           </View>
         ) : (
-          <ScrollView
+          <Animated.ScrollView
+            ref={dnd.hScrollRef}
+            onScroll={dnd.hScrollHandler}
+            scrollEventThrottle={16}
+            scrollEnabled={!dnd.isDragging}
             horizontal
             showsHorizontalScrollIndicator={false}
             decelerationRate="fast"
-            snapToInterval={LIST_WIDTH + 12}
+            // Free scroll once three-plus columns fit; snapping fights
+            // the user when the viewport already shows several lists.
+            // Snapping also pauses mid-drag so autoscroll lands cleanly.
+            snapToInterval={
+              isExpanded || dnd.isDragging ? undefined : listWidth + 12
+            }
             snapToAlignment="start"
             contentContainerStyle={{
               paddingHorizontal: 16,
@@ -432,38 +595,38 @@ export default function BoardDetail() {
               />
             }
           >
-            {data!.lists
-              .slice()
-              .sort((a, b) => a.sortOrder - b.sortOrder)
-              .map((list) => (
-                <ListColumn
-                  key={list.id}
-                  list={list}
-                  tasks={tasksByList.get(list.id) || []}
-                  edges={
-                    edgesByList.get(list.id) || {
-                      incoming: [],
-                      outgoing: [],
-                    }
+            {sortedLists.map((list) => (
+              <ListColumn
+                key={list.id}
+                list={list}
+                listWidth={listWidth}
+                tasks={tasksByList.get(list.id) || []}
+                edges={
+                  edgesByList.get(list.id) || {
+                    incoming: [],
+                    outgoing: [],
                   }
-                  listTitleById={listTitleById}
-                  accent={styles.accent}
-                  onAddCard={(title) => addCard(list.id, title)}
-                  onCardPress={(task) =>
-                    router.push(
-                      `/(home)/workflow/${boardId}/card/${task.id}` as never
-                    )
-                  }
-                  onCardLongPress={(task) => setActiveCard(task)}
-                />
-              ))}
+                }
+                listTitleById={listTitleById}
+                accent={styles.accent}
+                dnd={dnd}
+                onAddCard={(title) => addCard(list.id, title)}
+                onCardPress={(task) =>
+                  router.push(
+                    `/(home)/workflow/${boardId}/card/${task.id}` as never
+                  )
+                }
+                onCardLongPress={(task) => setActiveCard(task)}
+              />
+            ))}
             <AddListComposer
               accent={styles.accent}
+              width={listWidth}
               onSubmit={(title) => addList(title)}
             />
             {/* trailing spacer so the last list doesn't sit flush with the edge */}
             <View style={{ width: 4 }} />
-          </ScrollView>
+          </Animated.ScrollView>
         )}
       </SafeAreaView>
 
@@ -501,6 +664,74 @@ export default function BoardDetail() {
           );
         }}
       />
+
+      {board ? (
+        <BoardSettingsSheet
+          visible={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          boardId={boardId}
+          title={board.title}
+          color={board.color}
+          onSaved={({ title, color }) =>
+            setData((prev) =>
+              prev
+                ? { ...prev, board: { ...prev.board, title, color } }
+                : prev
+            )
+          }
+          onDeleted={() => router.back()}
+          onDeleteNeedsRequest={(target) => setRequestTarget(target)}
+        />
+      ) : null}
+
+      {/* Save menu: Picture / Document (native snapshot) / Data (xlsx) */}
+      <BoardExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        contextLine={`${totalLists} lists · ${totalCards} cards`}
+        exportXlsx={() => exportBoardXlsx(boardId, board?.title ?? "board")}
+        capture={capture}
+      />
+
+      {/* Capture rig — attached, opaque, occluded. Android only
+          photographs views that are really laid out on screen. */}
+      {snapshotting && data ? (
+        <>
+          <BoardSnapshotView
+            data={data}
+            accent={styles.accent}
+            innerRef={snapshotInnerRef}
+            onReady={(w, h) => snapshotReadyRef.current?.({ w, h })}
+          />
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#f4ede0",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator color="#c5853a" size="large" />
+            <Text
+              className="mt-3 text-[12px] uppercase"
+              style={{
+                fontFamily: "DMMono-Medium",
+                letterSpacing: 1.6,
+                color: "#8a5821",
+              }}
+            >
+              Preparing snapshot…
+            </Text>
+          </View>
+        </>
+      ) : null}
+
+      {/* Drag clone — floats above everything while a card is in hand */}
+      {dnd.overlay}
     </View>
   );
 }
@@ -516,6 +747,8 @@ function Header({
   presenceCount,
   unreadCount,
   onBack,
+  onExport,
+  onSettings,
   onBell,
 }: {
   title: string;
@@ -526,6 +759,8 @@ function Header({
   presenceCount: number;
   unreadCount: number;
   onBack: () => void;
+  onExport?: (() => void) | null;
+  onSettings?: (() => void) | null;
   onBell: () => void;
 }) {
   return (
@@ -615,6 +850,32 @@ function Header({
         </View>
       ) : null}
 
+      {/* Export */}
+      {onExport ? (
+        <Pressable
+          onPress={onExport}
+          hitSlop={6}
+          className="active:opacity-50 h-9 w-9 items-center justify-center rounded-md"
+          style={{ backgroundColor: "#ffffff" }}
+          accessibilityLabel="Export board data"
+        >
+          <Feather name="download" size={15} color={accent} />
+        </Pressable>
+      ) : null}
+
+      {/* Settings */}
+      {onSettings ? (
+        <Pressable
+          onPress={onSettings}
+          hitSlop={6}
+          className="active:opacity-50 h-9 w-9 items-center justify-center rounded-md"
+          style={{ backgroundColor: "#ffffff" }}
+          accessibilityLabel="Board settings"
+        >
+          <Feather name="more-horizontal" size={15} color={accent} />
+        </Pressable>
+      ) : null}
+
       {/* Bell */}
       <Pressable
         onPress={onBell}
@@ -661,30 +922,39 @@ function Header({
 
 function ListColumn({
   list,
+  listWidth,
   tasks,
   edges,
   listTitleById,
   accent,
+  dnd,
   onAddCard,
   onCardPress,
   onCardLongPress,
 }: {
   list: CanvasList;
+  listWidth: number;
   tasks: PreviewTask[];
   edges: { incoming: CanvasEdge[]; outgoing: CanvasEdge[] };
   listTitleById: Map<string, string>;
   accent: string;
+  dnd: ReturnType<typeof useBoardDnd>;
   onAddCard: (title: string) => void;
   onCardPress: (task: PreviewTask) => void;
   onCardLongPress: (task: PreviewTask) => void;
 }) {
   const stripe = list.color || accent;
   const isPending = isTemp(list.id);
+  const bodyRef = useRef<ScrollView | null>(null);
+  const dropHere =
+    dnd.dropTarget && dnd.dropTarget.listId === list.id
+      ? dnd.dropTarget.index
+      : null;
 
   return (
     <View
       style={{
-        width: LIST_WIDTH,
+        width: listWidth,
         backgroundColor: "rgba(255,255,255,0.92)",
         borderRadius: 14,
         overflow: "hidden",
@@ -756,6 +1026,29 @@ function ListColumn({
 
       {/* Cards body — scrolls vertically inside the list */}
       <ScrollView
+        ref={(r) => {
+          bodyRef.current = r;
+          dnd.setColumnScrollRef(list.id, r);
+        }}
+        onLayout={(e) => {
+          dnd.setColumnViewportH(list.id, e.nativeEvent.layout.height);
+          // Window-space top for the drag hit-test (Y never changes with
+          // horizontal scrolling, so one measure per layout is enough).
+          // ScrollView's TS type hides NativeMethods; the host component
+          // has them at runtime.
+          (
+            bodyRef.current as unknown as
+              | { measureInWindow(cb: (x: number, y: number) => void): void }
+              | null
+          )?.measureInWindow((_x: number, y: number) =>
+            dnd.setColumnWindowTop(list.id, y)
+          );
+        }}
+        onScroll={(e) =>
+          dnd.onColumnScroll(list.id, e.nativeEvent.contentOffset.y)
+        }
+        scrollEventThrottle={16}
+        scrollEnabled={!dnd.isDragging}
         style={{ maxHeight: 480 }}
         contentContainerStyle={{
           paddingHorizontal: 8,
@@ -788,14 +1081,59 @@ function ListColumn({
             </Text>
           </View>
         ) : (
-          tasks.map((t) => (
-            <CardItem
-              key={t.id}
-              task={t}
-              onPress={() => onCardPress(t)}
-              onLongPress={() => onCardLongPress(t)}
-            />
-          ))
+          (() => {
+            // The hit-test indexes cards EXCLUDING the dragged one, so
+            // indicator placement walks the same exclusive sequence.
+            const dragId = dnd.draggingTaskId;
+            let exclusive = 0;
+            const nodes = tasks.map((t) => {
+              const isDragged = t.id === dragId;
+              const showBefore = !isDragged && dropHere === exclusive;
+              const node = (
+                <View
+                  key={t.id}
+                  // y is relative to the scroll content — exactly the
+                  // space the hit-test works in.
+                  onLayout={(e) =>
+                    dnd.registerCardLayout(
+                      list.id,
+                      t.id,
+                      e.nativeEvent.layout.y,
+                      e.nativeEvent.layout.height
+                    )
+                  }
+                >
+                  {showBefore ? (
+                    <View style={{ marginBottom: 6 }}>
+                      <DropIndicator />
+                    </View>
+                  ) : null}
+                  <GestureDetector gesture={dnd.makeGesture(t)}>
+                    <View
+                      collapsable={false}
+                      style={{ opacity: isDragged ? 0.35 : 1 }}
+                    >
+                      <CardItem
+                        task={t}
+                        onPress={() => onCardPress(t)}
+                        onMore={() => onCardLongPress(t)}
+                      />
+                    </View>
+                  </GestureDetector>
+                </View>
+              );
+              if (!isDragged) exclusive += 1;
+              return node;
+            });
+            return (
+              <>
+                {nodes}
+                {dropHere !== null && dropHere >= exclusive ? (
+                  <DropIndicator />
+                ) : null}
+              </>
+            );
+          })()
         )}
       </ScrollView>
 

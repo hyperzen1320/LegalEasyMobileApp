@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -8,6 +7,7 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -122,74 +122,78 @@ export default function UsersList() {
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
-          <ScrollView
-            contentContainerClassName="px-5 pt-3 pb-12"
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+          // FlashList recycles rows — banners ride as the header and the
+          // entrance animation stays on the container.
+          <Animated.View
+            entering={FadeInDown.duration(380)}
+            className="flex-1"
           >
-            {!isAdmin ? (
-              <View
-                className="rounded-xl px-4 py-3.5 mb-4 flex-row items-start gap-3"
-                style={{
-                  backgroundColor: "rgba(86,160,168,0.10)",
-                  borderWidth: 1,
-                  borderColor: "rgba(86,160,168,0.30)",
-                }}
-              >
-                <Feather name="info" size={16} color="#56a0a8" />
-                <Text
-                  className="flex-1 text-[12px] leading-[1.5]"
-                  style={{ fontFamily: "Manrope", color: "#0a1124" }}
-                >
-                  Only the office admin can add or remove users. You can view
-                  the team here.
-                </Text>
-              </View>
-            ) : null}
+            <FlashList
+              data={filtered}
+              keyExtractor={(u) => u.id}
+              renderItem={({ item }) => <UserCard u={item} />}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 12,
+                paddingBottom: 48,
+              }}
+              ItemSeparatorComponent={RowGap}
+              ListHeaderComponent={
+                <View>
+                  {!isAdmin ? (
+                    <View
+                      className="rounded-xl px-4 py-3.5 mb-4 flex-row items-start gap-3"
+                      style={{
+                        backgroundColor: "rgba(86,160,168,0.10)",
+                        borderWidth: 1,
+                        borderColor: "rgba(86,160,168,0.30)",
+                      }}
+                    >
+                      <Feather name="info" size={16} color="#56a0a8" />
+                      <Text
+                        className="flex-1 text-[12px] leading-[1.5]"
+                        style={{ fontFamily: "Manrope", color: "#0a1124" }}
+                      >
+                        Only the office admin can add or remove users. You can
+                        view the team here.
+                      </Text>
+                    </View>
+                  ) : null}
 
-            {error ? (
-              <View
-                className="rounded-md px-4 py-3 mb-4"
-                style={{ backgroundColor: "#f6dccd" }}
-              >
-                <Text
-                  className="text-[13px]"
-                  style={{ fontFamily: "Manrope", color: "#c14a37" }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {filtered.length === 0 ? (
-              <Empty
-                hasUsers={users.length > 0}
-                isAdmin={isAdmin}
-                onAdd={() => router.push("/(home)/users/new")}
-              />
-            ) : (
-              <View className="gap-3">
-                {filtered.map((u, i) => (
-                  <Animated.View
-                    key={u.id}
-                    entering={FadeInDown.duration(380).delay(
-                      Math.min(i, 10) * 35
-                    )}
-                  >
-                    <UserCard u={u} />
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-          </ScrollView>
+                  {error ? (
+                    <View
+                      className="rounded-md px-4 py-3 mb-4"
+                      style={{ backgroundColor: "#f6dccd" }}
+                    >
+                      <Text
+                        className="text-[13px]"
+                        style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                      >
+                        {error}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              }
+              ListEmptyComponent={
+                <Empty
+                  hasUsers={users.length > 0}
+                  isAdmin={isAdmin}
+                  onAdd={() => router.push("/(home)/users/new")}
+                />
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#c5853a"
+                />
+              }
+            />
+          </Animated.View>
         )}
       </SafeAreaView>
     </View>
@@ -393,6 +397,10 @@ function UserCard({ u }: { u: PartnerStaffUser }) {
 }
 
 /* ─── Empty ─── */
+
+function RowGap() {
+  return <View style={{ height: 12 }} />;
+}
 
 function Empty({
   hasUsers,

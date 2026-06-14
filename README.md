@@ -95,15 +95,24 @@ npm install
 ```
 
 ### 2. Point at the API
-The mobile app talks to the LegalEasy web backend. Set the base URL in `lib/config.ts` (or via app config) — typically your tunneled dev URL or production host:
+The mobile app talks to the LegalEasy web backend. `lib/config.ts` resolves the base URL automatically — **no code edits needed**:
 
-```ts
-// lib/config.ts
-export function getApiBaseUrl() {
-  return "http://<your-machine-ip>:3000";   // dev
-  // return "https://legaleasy.<your-domain>"; // prod
-}
+| Priority | Source | When it applies |
+|---|---|---|
+| 1️⃣ | `EXPO_PUBLIC_API_URL` env var | Production / staging — set to `https://legalezi.com` |
+| 2️⃣ | Expo dev server's LAN host (`hostUri` → port 3000) | Physical device on the same Wi-Fi as your laptop |
+| 3️⃣ | `http://10.0.2.2:3000` | Android emulator |
+| 4️⃣ | `http://localhost:3000` | iOS simulator |
+
+```bash
+# dev against the live server instead of localhost:
+EXPO_PUBLIC_API_URL=https://legalezi.com npx expo start
+
+# EAS builds bake it in via eas.json (preview + production profiles
+# already carry EXPO_PUBLIC_API_URL=https://legalezi.com)
 ```
+
+> 🖥️ Local dev: run the web repo with `npm run dev` (binds `-H 0.0.0.0` so your phone can reach it over Wi-Fi).
 
 ### 3. Run
 ```bash
@@ -199,8 +208,9 @@ All endpoints are tenant-scoped on the server. The mobile client never sees data
 ## 🛣️ Roadmap
 
 - [x] **Phase 1 MVP** — every web module mirrored on mobile
-- [ ] **Phase 1.5** — Kanban detail inside boards (lists + task cards)
-- [ ] **Phase 2** — Push notifications for next-hearing reminders · Senior Desk · Offline write queue
+- [x] **Phase 1.5** — Kanban detail inside boards, now with long-press **drag & drop**
+- [x] **Full web parity** — case documents (upload/preview/share/print), every export (Excel · Word · PDF · board snapshots), Senior Desk chat + reminders, attendance register, disposed archive, office activity & settings, tablet two-pane layouts — see [`docs/PARITY_PLAN.md`](docs/PARITY_PLAN.md)
+- [ ] **Next** — Push notifications for next-hearing reminders · Offline write queue
 
 ---
 

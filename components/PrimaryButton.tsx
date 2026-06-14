@@ -41,6 +41,9 @@ export default function PrimaryButton({
             : "font-mono text-[12px] uppercase text-ink"
         }
         style={{ letterSpacing: 2.5 }}
+        // Dense mono chrome clips before it wraps — clamp accessibility
+        // scaling here (FONT_CLAMP.chrome).
+        maxFontSizeMultiplier={1.15}
       >
         {label}
       </Text>

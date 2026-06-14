@@ -1,14 +1,16 @@
 import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
+import { useChatUnread } from "../../lib/chat-unread";
 
 export default function HomeLayout() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { status, isGlobalAdmin } = useAuth();
+  // Senior Desk unread total rides on the More tab (web puts it on the
+  // sidebar item). The singleton polls every 12s while the app is open.
+  const { unread } = useChatUnread();
 
   // Two redirects this layout enforces:
   //  - no session → back to signin
@@ -35,23 +37,22 @@ export default function HomeLayout() {
     );
   }
 
-  // Safe-area aware tab bar — same pattern we used for /admin tabs.
-  const bottomInset = Math.max(insets.bottom, 8);
-  const tabBarHeight = 58 + bottomInset;
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Cross-fade + drift between tabs instead of a hard card swap.
+        animation: "shift",
         tabBarActiveTintColor: "#c5853a",
         tabBarInactiveTintColor: "#7a7060",
+        // No manual height/inset math — the navigator adds the device's
+        // bottom safe area itself, so the bar clears gesture pills AND
+        // 3-button navigation on every screen size.
         tabBarStyle: {
           backgroundColor: "#0a1124",
           borderTopColor: "#1f2a45",
           borderTopWidth: 1,
-          height: tabBarHeight,
-          paddingTop: 8,
-          paddingBottom: bottomInset,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -98,6 +99,18 @@ export default function HomeLayout() {
           tabBarIcon: ({ color }) => (
             <Feather name="menu" size={20} color={color} />
           ),
+          tabBarBadge:
+            unread.totalUnread > 0
+              ? unread.totalUnread > 99
+                ? "99+"
+                : unread.totalUnread
+              : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: "#c5853a",
+            color: "#2a1c08",
+            fontFamily: "DMMono-Medium",
+            fontSize: 9,
+          },
         }}
       />
       <Tabs.Screen name="clients" options={{ href: null }} />
@@ -106,6 +119,10 @@ export default function HomeLayout() {
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="users" options={{ href: null }} />
       <Tabs.Screen name="workflow" options={{ href: null }} />
+      <Tabs.Screen name="senior-desk" options={{ href: null }} />
+      <Tabs.Screen name="activity" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="attendance" options={{ href: null }} />
     </Tabs>
   );
 }

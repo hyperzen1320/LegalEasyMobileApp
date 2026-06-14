@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ScrollView,
   View,
@@ -10,10 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import {
   partnerCreateCase,
+  partnerGetCase,
   ApiError,
   type PartnerCaseInput,
 } from "../../../lib/api";
@@ -71,6 +72,40 @@ export default function NewCase() {
   const [courtPlace, setCourtPlace] = useState("");
   const [courtHall, setCourtHall] = useState("");
   const [clientAddress, setClientAddress] = useState("");
+
+  // "Duplicate matter": ?from=<caseId> pre-fills the parties and court
+  // from an existing case. Identifiers and dates stay blank — those are
+  // what make the new matter a different matter.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  useEffect(() => {
+    if (!from) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await partnerGetCase(String(from));
+        if (!alive) return;
+        const c = res.case;
+        setClientName(c.clientName || "");
+        setAppearingFor(c.appearingFor || "Petitioner");
+        setClientPhone(c.clientPhone || "");
+        setClientWhatsapp(c.clientWhatsapp || "");
+        setClientAddress(c.clientAddress || "");
+        setOppositeParty(c.oppositeParty || "");
+        setOppositeAdvocate(c.oppositeAdvocate || "");
+        setCourtName(c.courtName || "");
+        setCourtPlace(c.courtPlace || "");
+        setCourtHall(c.courtHall || "");
+        if (c.courtPlace || c.courtHall || c.clientAddress) {
+          setShowOptional(true);
+        }
+      } catch {
+        // Pre-fill is best-effort — a blank form is a fine fallback.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [from]);
 
   function clearMissing(key: string) {
     if (missing.has(key)) {
@@ -132,7 +167,7 @@ export default function NewCase() {
           className="flex-1"
         >
           <ScrollView
-            contentContainerClassName="px-5 pt-5 pb-12"
+            contentContainerClassName="px-5 pt-5 pb-12 sm:max-w-[560px] sm:self-center sm:w-full"
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -13,68 +12,206 @@ import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { partnerListCases, type PartnerCase } from "../../../lib/api";
+import { FlashList } from "@shopify/flash-list";
+import {
+  partnerListCases,
+  type CaseListFilters,
+  type PartnerCase,
+} from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
+import ExportSheet from "../../../components/ExportSheet";
+import CaseFilterSheet, {
+  countActive,
+  type CaseFilterLabels,
+} from "../../../components/cases/CaseFilterSheet";
+import CaseDetailView from "../../../components/cases/CaseDetailView";
+import { useBreakpoint } from "../../../lib/useBreakpoint";
+import { formatDateForDisplay } from "../../../components/CaseFields";
+import {
+  CASE_EXPORT_COLUMNS,
+  CASE_EXPORT_DEFAULT_KEYS,
+  exportCases,
+} from "../../../lib/exports";
+
+const PAGE_SIZE = 50;
 
 export default function CaseVault() {
   const router = useRouter();
+  // Exports are office-admin only (server enforces role=admin; the
+  // partner admin is the only mobile user that maps to it — /me doesn't
+  // carry staff roles, so staff-admins export from the web).
+  const { isPartnerAdmin } = useAuth();
   const [cases, setCases] = useState<PartnerCase[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // Debounced copy of the search box — this is what actually hits the
+  // server (the list, like the web vault, filters server-side).
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<CaseListFilters>({});
+  const [filterLabels, setFilterLabels] = useState<CaseFilterLabels>({});
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await partnerListCases();
-      setCases(data.cases);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    }
-  }, []);
+  // Tablet two-pane: ≥840dp the vault keeps the list on the left and
+  // embeds the dossier on the right. Phones keep the pushed [id] route
+  // (which stays registered either way, so deep links never break).
+  const { isExpanded } = useBreakpoint();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const pageRef = useRef(1);
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
-    (async () => {
-      await load();
-      setLoading(false);
-    })();
+    const t = setTimeout(() => setSearch(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const params = useMemo<CaseListFilters>(
+    () => ({ ...filters, search: search || undefined }),
+    [filters, search]
+  );
+
+  const load = useCallback(
+    async (mode: "reset" | "more") => {
+      const myReq = ++reqIdRef.current;
+      const page = mode === "more" ? pageRef.current + 1 : 1;
+      try {
+        const data = await partnerListCases({
+          filters: params,
+          page,
+          limit: PAGE_SIZE,
+        });
+        if (myReq !== reqIdRef.current) return; // params changed mid-flight
+        pageRef.current = data.page;
+        setTotal(data.total);
+        setHasMore(data.hasMore);
+        setCases((prev) =>
+          mode === "more" ? [...prev, ...data.cases] : data.cases
+        );
+        setError(null);
+      } catch (err) {
+        if (myReq !== reqIdRef.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load");
+      }
+    },
+    [params]
+  );
+
+  // Boot + every search/filter change.
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    load("reset").finally(() => {
+      if (alive) setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
   }, [load]);
 
+  // Silent refresh when returning to the tab (a hearing may have been
+  // updated from a detail screen).
   useFocusEffect(
     useCallback(() => {
-      load();
+      load("reset");
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await load("reset");
     setRefreshing(false);
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return cases;
-    return cases.filter((c) => {
-      return (
-        c.caseNo.toLowerCase().includes(q) ||
-        c.fileNo.toLowerCase().includes(q) ||
-        (c.cnr || "").toLowerCase().includes(q) ||
-        (c.clientName || "").toLowerCase().includes(q) ||
-        (c.oppositeParty || "").toLowerCase().includes(q) ||
-        (c.courtName || "").toLowerCase().includes(q) ||
-        (c.courtPlace || "").toLowerCase().includes(q) ||
-        (c.status || "").toLowerCase().includes(q)
-      );
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loading || loadingMore || refreshing) return;
+    setLoadingMore(true);
+    await load("more");
+    setLoadingMore(false);
+  }, [hasMore, loading, loadingMore, refreshing, load]);
+
+  const activeFilterCount = countActive(filters);
+
+  const clearFilter = (key: keyof CaseListFilters) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
     });
-  }, [cases, query]);
+  };
+
+  // Date-range chip collapses both bounds into one label.
+  const filterChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (filters.courtPlace) {
+      chips.push({
+        key: "courtPlace",
+        label: filters.courtPlace,
+        clear: () => clearFilter("courtPlace"),
+      });
+    }
+    if (filters.courtId) {
+      chips.push({
+        key: "courtId",
+        label: filterLabels.courtId ?? "Court",
+        clear: () => clearFilter("courtId"),
+      });
+    }
+    if (filters.advocateId) {
+      chips.push({
+        key: "advocateId",
+        label: filterLabels.advocateId ?? "Filed by",
+        clear: () => clearFilter("advocateId"),
+      });
+    }
+    if (filters.fromDate || filters.toDate) {
+      const from = filters.fromDate
+        ? formatDateForDisplay(filters.fromDate)
+        : "…";
+      const to = filters.toDate ? formatDateForDisplay(filters.toDate) : "…";
+      chips.push({
+        key: "dates",
+        label: `${from} → ${to}`,
+        clear: () => {
+          setFilters((prev) => {
+            const next = { ...prev };
+            delete next.fromDate;
+            delete next.toDate;
+            return next;
+          });
+        },
+      });
+    }
+    return chips;
+  }, [filters, filterLabels]);
 
   return (
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar count={cases.length} />
+        <TopBar
+          count={total}
+          onExport={isPartnerAdmin ? () => setExporting(true) : null}
+        />
 
+        <View className="flex-1 flex-row">
+        {/* Left pane: search + rolls (the whole screen on phones) */}
+        <View
+          style={
+            isExpanded
+              ? {
+                  width: 392,
+                  borderRightWidth: 1,
+                  borderRightColor: "#e3d9c0",
+                }
+              : { flex: 1 }
+          }
+        >
         {/* Search bar — sticky under topbar */}
         <View className="px-5 pt-4 pb-2 bg-app-canvas">
           <View
@@ -107,7 +244,73 @@ export default function CaseVault() {
                 <Feather name="x" size={15} color="#8a5821" />
               </Pressable>
             ) : null}
+            <Pressable
+              onPress={() => setFilterOpen(true)}
+              hitSlop={8}
+              className="active:opacity-60 flex-row items-center gap-1 pl-2"
+              style={{
+                borderLeftWidth: 1,
+                borderLeftColor: "#efe5d0",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Filter cases"
+            >
+              <Feather
+                name="sliders"
+                size={15}
+                color={activeFilterCount > 0 ? "#8a5821" : "#a89c80"}
+              />
+              {activeFilterCount > 0 ? (
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{
+                    minWidth: 15,
+                    height: 15,
+                    backgroundColor: "#c5853a",
+                    paddingHorizontal: 3,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "DMMono-Medium",
+                      fontSize: 9,
+                      color: "#2a1c08",
+                    }}
+                  >
+                    {activeFilterCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
           </View>
+
+          {/* Active filter chips */}
+          {filterChips.length > 0 ? (
+            <View className="flex-row flex-wrap mt-2" style={{ gap: 6 }}>
+              {filterChips.map((chip) => (
+                <Pressable
+                  key={chip.key}
+                  onPress={chip.clear}
+                  className="flex-row items-center gap-1.5 rounded-full px-2.5 active:opacity-70"
+                  style={{
+                    paddingVertical: 4,
+                    backgroundColor: "#efe5d0",
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Clear filter ${chip.label}`}
+                >
+                  <Text
+                    className="text-[11px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#4d4538" }}
+                    numberOfLines={1}
+                  >
+                    {chip.label}
+                  </Text>
+                  <Feather name="x" size={11} color="#8a5821" />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {loading ? (
@@ -115,57 +318,171 @@ export default function CaseVault() {
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
-          <ScrollView
-            contentContainerClassName="px-5 pt-3 pb-6"
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+          // FlashList recycles rows, so the entrance stagger lives on the
+          // list container — per-row `entering` would replay on recycle.
+          <Animated.View
+            entering={FadeInDown.duration(380)}
+            className="flex-1"
           >
-            {error ? (
-              <View className="rounded-md border border-app-danger/30 bg-app-danger-soft px-4 py-3 mb-4">
+            <FlashList
+              data={cases}
+              extraData={selectedId}
+              keyExtractor={(c) => c.id}
+              renderItem={({ item }) => (
+                <CaseCard
+                  c={item}
+                  selected={isExpanded && selectedId === item.id}
+                  onPress={() =>
+                    isExpanded
+                      ? setSelectedId(item.id)
+                      : router.push(`/(home)/cases/${item.id}` as never)
+                  }
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.4}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 12,
+                paddingBottom: 24,
+              }}
+              ItemSeparatorComponent={RowGap}
+              ListHeaderComponent={
+                error ? (
+                  <View className="rounded-md border border-app-danger/30 bg-app-danger-soft px-4 py-3 mb-4">
+                    <Text
+                      className="text-[13px] text-app-fg"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      {error}
+                    </Text>
+                  </View>
+                ) : null
+              }
+              ListFooterComponent={
+                loadingMore ? (
+                  <View className="items-center py-5">
+                    <ActivityIndicator color="#c5853a" size="small" />
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                search || activeFilterCount > 0 ? (
+                  <NoMatches
+                    query={search || "filters"}
+                    onClear={() => {
+                      setQuery("");
+                      setFilters({});
+                    }}
+                  />
+                ) : (
+                  <EmptyVault
+                    onAdd={() => router.push("/(home)/cases/new")}
+                  />
+                )
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#c5853a"
+                />
+              }
+            />
+          </Animated.View>
+        )}
+        </View>
+
+        {/* Right pane: the dossier (tablets only) */}
+        {isExpanded ? (
+          <View className="flex-1">
+            {selectedId ? (
+              <CaseDetailView
+                key={selectedId}
+                caseId={selectedId}
+                onDeleted={() => {
+                  setSelectedId(null);
+                  load("reset");
+                }}
+              />
+            ) : (
+              <View className="flex-1 items-center justify-center px-10">
+                <View
+                  className="h-14 w-14 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "#efe5d0" }}
+                >
+                  <Feather name="book-open" size={22} color="#8a5821" />
+                </View>
                 <Text
-                  className="text-[13px] text-app-fg"
+                  className="mt-5 text-[20px] tracking-tight text-app-ink text-center"
+                  style={{ fontFamily: "Crimson-SemiBold" }}
+                >
+                  Pick a matter from the rolls.
+                </Text>
+                <Text
+                  className="mt-2 text-[13px] text-app-fg-muted text-center max-w-[300px]"
                   style={{ fontFamily: "Manrope" }}
                 >
-                  {error}
+                  Its full dossier — dates, documents, contacts — opens
+                  right here.
                 </Text>
               </View>
-            ) : null}
-
-            {cases.length === 0 ? (
-              <EmptyVault onAdd={() => router.push("/(home)/cases/new")} />
-            ) : filtered.length === 0 ? (
-              <NoMatches query={query} onClear={() => setQuery("")} />
-            ) : (
-              <View className="gap-3">
-                {filtered.map((c, i) => (
-                  <Animated.View
-                    key={c.id}
-                    entering={FadeInDown.duration(380).delay(
-                      Math.min(i, 10) * 35
-                    )}
-                  >
-                    <CaseCard c={c} />
-                  </Animated.View>
-                ))}
-              </View>
             )}
-          </ScrollView>
-        )}
+          </View>
+        ) : null}
+        </View>
       </SafeAreaView>
+
+      <ExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        eyebrow="Case Vault"
+        title="Export the case rolls"
+        contextLine={
+          activeFilterCount > 0 || search
+            ? `Current view · ${total} matters (filters carry into the file)`
+            : `All active matters · ${total}`
+        }
+        columns={{
+          // "Disposed On" is always empty on the active vault; the
+          // disposed archive export offers it instead.
+          catalog: CASE_EXPORT_COLUMNS.filter((c) => c.key !== "disposedAt"),
+          defaultKeys: CASE_EXPORT_DEFAULT_KEYS,
+        }}
+        run={(format, columnKeys) =>
+          exportCases(format, { filters: params, columns: columnKeys })
+        }
+      />
+
+      <CaseFilterSheet
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={filters}
+        onApply={(next, labels) => {
+          setFilters(next);
+          setFilterLabels(labels);
+        }}
+      />
     </View>
   );
 }
 
-function TopBar({ count }: { count: number }) {
+function RowGap() {
+  return <View style={{ height: 12 }} />;
+}
+
+function TopBar({
+  count,
+  onExport,
+}: {
+  count: number;
+  onExport?: (() => void) | null;
+}) {
   const router = useRouter();
+  const onArchive = () => router.push("/(home)/cases/disposed" as never);
   return (
     <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between">
       <View>
@@ -193,6 +510,41 @@ function TopBar({ count }: { count: number }) {
         </View>
       </View>
       <Pressable
+        onPress={onArchive}
+        hitSlop={6}
+        className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+        style={{
+          height: 36,
+          width: 36,
+          backgroundColor: "#ffffff",
+          borderWidth: 1,
+          borderColor: "#e3d9c0",
+          marginLeft: "auto",
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Disposed cases archive"
+      >
+        <Feather name="archive" size={15} color="#8a5821" />
+      </Pressable>
+      {onExport ? (
+        <Pressable
+          onPress={onExport}
+          hitSlop={6}
+          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+          style={{
+            height: 36,
+            width: 36,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Export case rolls"
+        >
+          <Feather name="download" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
+      <Pressable
         onPress={() => router.push("/(home)/cases/new")}
         className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
         style={{
@@ -216,8 +568,15 @@ function TopBar({ count }: { count: number }) {
   );
 }
 
-function CaseCard({ c }: { c: PartnerCase }) {
-  const router = useRouter();
+function CaseCard({
+  c,
+  onPress,
+  selected,
+}: {
+  c: PartnerCase;
+  onPress: () => void;
+  selected?: boolean;
+}) {
   const next = c.nextHearingDate ? new Date(c.nextHearingDate) : null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -236,7 +595,7 @@ function CaseCard({ c }: { c: PartnerCase }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/(home)/cases/${c.id}` as never)}
+      onPress={onPress}
       className="rounded-xl bg-app-paper p-4 active:opacity-90"
       style={{
         shadowColor: "#0a1124",
@@ -246,6 +605,8 @@ function CaseCard({ c }: { c: PartnerCase }) {
         elevation: 1,
         borderLeftWidth: 3,
         borderLeftColor: "#c5853a",
+        borderWidth: selected ? 1.5 : 0,
+        borderColor: selected ? "#c5853a" : "transparent",
       }}
     >
       {/* Top row — case no, file no, status pill */}

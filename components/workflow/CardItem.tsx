@@ -30,18 +30,22 @@ function dueState(iso: string): "overdue" | "today" | "future" {
 }
 
 /**
- * One Trello card. Tap → push to detail. Long-press → caller's sheet
- * (Move / Edit / Delete). Optimistic temp:* cards render dim with a
- * small "saving" dot so users know it isn't yet on the server.
+ * One Trello card. Tap → push to detail. The "⋯" button opens the
+ * caller's action sheet (Move / Edit / Delete) — long-press is reserved
+ * for drag & drop, with the sheet's Move flow as the accessible
+ * fallback. Optimistic temp:* cards render dim with a small "saving"
+ * dot so users know they aren't yet on the server.
  */
 export default function CardItem({
   task,
   onPress,
   onLongPress,
+  onMore,
 }: {
   task: PreviewTask;
   onPress: () => void;
-  onLongPress: () => void;
+  onLongPress?: () => void;
+  onMore?: () => void;
 }) {
   const isPending = task.id.startsWith("tmp:");
   const due = task.dueDate ? new Date(task.dueDate) : null;
@@ -64,10 +68,14 @@ export default function CardItem({
         Haptics.selectionAsync();
         onPress();
       }}
-      onLongPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onLongPress();
-      }}
+      onLongPress={
+        onLongPress
+          ? () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onLongPress();
+            }
+          : undefined
+      }
       delayLongPress={350}
       className="active:opacity-70"
       style={{
@@ -109,9 +117,25 @@ export default function CardItem({
             letterSpacing: -0.1,
           }}
           numberOfLines={3}
+          maxFontSizeMultiplier={1.3}
         >
           {task.title}
         </Text>
+        {onMore ? (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              onMore();
+            }}
+            hitSlop={8}
+            className="active:opacity-50 items-center justify-center"
+            style={{ height: 22, width: 22, marginTop: -2, marginRight: -4 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${task.title}`}
+          >
+            <Feather name="more-horizontal" size={14} color="#a89c80" />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* description preview */}

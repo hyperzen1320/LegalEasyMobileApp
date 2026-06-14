@@ -100,10 +100,16 @@ export default function Sheet({
             <View style={styles.headerRow}>
               <View style={{ flex: 1 }}>
                 {eyebrow ? (
-                  <Text style={styles.eyebrow}>{eyebrow}</Text>
+                  <Text style={styles.eyebrow} maxFontSizeMultiplier={1.15}>
+                    {eyebrow}
+                  </Text>
                 ) : null}
                 {title ? (
-                  <Text style={styles.title} numberOfLines={1}>
+                  <Text
+                    style={styles.title}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     {title}
                   </Text>
                 ) : null}

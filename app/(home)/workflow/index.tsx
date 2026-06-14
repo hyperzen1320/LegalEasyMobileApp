@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -10,7 +9,11 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import BoardSettingsSheet from "../../../components/workflow/BoardSettingsSheet";
+import RequestDeleteSheet from "../../../components/workflow/RequestDeleteSheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -23,6 +26,7 @@ import {
   ApiError,
   type PartnerBoard,
   type BoardColor,
+  type DeleteRequestRequiredError,
 } from "../../../lib/api";
 import {
   BOARD_COLOR_STYLES,
@@ -37,6 +41,10 @@ export default function Workflow() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  // "⋯" on a tile → rename / recolour / delete without opening the board.
+  const [settingsFor, setSettingsFor] = useState<PartnerBoard | null>(null);
+  const [requestTarget, setRequestTarget] =
+    useState<DeleteRequestRequiredError | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -123,73 +131,88 @@ export default function Workflow() {
             <ActivityIndicator color="#c5853a" size="large" />
           </View>
         ) : (
-          <ScrollView
-            contentContainerClassName="px-5 pt-3 pb-12"
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+          // FlashList recycles rows — error + create-tile ride as the
+          // header; entrance animation lives on the container.
+          <Animated.View
+            entering={FadeInDown.duration(380)}
+            className="flex-1"
           >
-            {error ? (
-              <View
-                className="rounded-md px-4 py-3 mb-4"
-                style={{ backgroundColor: "#f6dccd" }}
-              >
-                <Text
-                  className="text-[13px]"
-                  style={{ fontFamily: "Manrope", color: "#c14a37" }}
-                >
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Create new tile + boards */}
-            <View className="gap-4">
-              <CreateTile onPress={() => setCreating(true)} />
-              {filtered.map((b, i) => (
-                <Animated.View
-                  key={b.id}
-                  entering={FadeInDown.duration(380).delay(
-                    Math.min(i, 10) * 35
-                  )}
-                >
-                  <BoardTile board={b} onOpen={() => router.push(`/(home)/workflow/${b.id}` as never)} />
-                </Animated.View>
-              ))}
-              {filtered.length === 0 && query ? (
-                <View
-                  className="rounded-xl px-5 py-10 items-center"
-                  style={{
-                    backgroundColor: "#ffffff",
-                    borderWidth: 1,
-                    borderColor: "#e3d9c0",
-                    borderStyle: "dashed",
-                  }}
-                >
-                  <Feather name="search" size={20} color="#a89c80" />
-                  <Text
-                    className="mt-3 text-[13px] text-app-fg-muted text-center"
-                    style={{ fontFamily: "Manrope" }}
-                  >
-                    No matches for{" "}
-                    <Text
-                      style={{
-                        fontFamily: "Manrope-SemiBold",
-                        color: "#0a1124",
-                      }}
+            <FlashList
+              data={filtered}
+              keyExtractor={(b) => b.id}
+              renderItem={({ item }) => (
+                <BoardTile
+                  board={item}
+                  onOpen={() =>
+                    router.push(`/(home)/workflow/${item.id}` as never)
+                  }
+                  onSettings={() => setSettingsFor(item)}
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 12,
+                paddingBottom: 48,
+              }}
+              ItemSeparatorComponent={TileGap}
+              ListHeaderComponent={
+                <View>
+                  {error ? (
+                    <View
+                      className="rounded-md px-4 py-3 mb-4"
+                      style={{ backgroundColor: "#f6dccd" }}
                     >
-                      “{query}”
-                    </Text>
-                  </Text>
+                      <Text
+                        className="text-[13px]"
+                        style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                      >
+                        {error}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <CreateTile onPress={() => setCreating(true)} />
+                  <View style={{ height: 16 }} />
                 </View>
-              ) : null}
-            </View>
-          </ScrollView>
+              }
+              ListEmptyComponent={
+                query ? (
+                  <View
+                    className="rounded-xl px-5 py-10 items-center"
+                    style={{
+                      backgroundColor: "#ffffff",
+                      borderWidth: 1,
+                      borderColor: "#e3d9c0",
+                      borderStyle: "dashed",
+                    }}
+                  >
+                    <Feather name="search" size={20} color="#a89c80" />
+                    <Text
+                      className="mt-3 text-[13px] text-app-fg-muted text-center"
+                      style={{ fontFamily: "Manrope" }}
+                    >
+                      No matches for{" "}
+                      <Text
+                        style={{
+                          fontFamily: "Manrope-SemiBold",
+                          color: "#0a1124",
+                        }}
+                      >
+                        “{query}”
+                      </Text>
+                    </Text>
+                  </View>
+                ) : null
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#c5853a"
+                />
+              }
+            />
+          </Animated.View>
         )}
       </SafeAreaView>
 
@@ -199,6 +222,43 @@ export default function Workflow() {
         onCreated={(b) => {
           setBoards((prev) => [b, ...prev]);
           setCreating(false);
+        }}
+      />
+
+      {settingsFor ? (
+        <BoardSettingsSheet
+          visible={Boolean(settingsFor)}
+          onClose={() => setSettingsFor(null)}
+          boardId={settingsFor.id}
+          title={settingsFor.title}
+          color={settingsFor.color}
+          onSaved={({ title, color }) => {
+            setBoards((prev) =>
+              prev.map((b) =>
+                b.id === settingsFor.id ? { ...b, title, color } : b
+              )
+            );
+            setSettingsFor(null);
+          }}
+          onDeleted={() => {
+            setBoards((prev) =>
+              prev.filter((b) => b.id !== settingsFor.id)
+            );
+            setSettingsFor(null);
+          }}
+          onDeleteNeedsRequest={(target) => {
+            setSettingsFor(null);
+            setRequestTarget(target);
+          }}
+        />
+      ) : null}
+
+      <RequestDeleteSheet
+        target={requestTarget}
+        onClose={() => setRequestTarget(null)}
+        onSubmitted={() => {
+          setRequestTarget(null);
+          Alert.alert("Sent for review", "The office admin has been notified.");
         }}
       />
     </View>
@@ -277,9 +337,11 @@ function TopBar({
 function BoardTile({
   board,
   onOpen,
+  onSettings,
 }: {
   board: PartnerBoard;
   onOpen: () => void;
+  onSettings: () => void;
 }) {
   const styles =
     BOARD_COLOR_STYLES[board.color] ?? BOARD_COLOR_STYLES.copper;
@@ -366,6 +428,16 @@ function BoardTile({
             </Text>
           ) : null}
         </View>
+        <Pressable
+          onPress={onSettings}
+          hitSlop={8}
+          className="h-7 w-7 items-center justify-center rounded-md active:opacity-60"
+          style={{ backgroundColor: "#efe5d0" }}
+          accessibilityRole="button"
+          accessibilityLabel={`Settings for ${board.title}`}
+        >
+          <Feather name="more-horizontal" size={14} color="#8a5821" />
+        </Pressable>
         <View
           className="h-7 w-7 items-center justify-center rounded-md"
           style={{ backgroundColor: "#efe5d0" }}
@@ -375,6 +447,10 @@ function BoardTile({
       </View>
     </Pressable>
   );
+}
+
+function TileGap() {
+  return <View style={{ height: 16 }} />;
 }
 
 function CreateTile({ onPress }: { onPress: () => void }) {

@@ -1,13 +1,11 @@
 import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 
 export default function AdminLayout() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { status, isGlobalAdmin } = useAuth();
 
   // Mirror of home/_layout.tsx — partner users that wander into the
@@ -29,24 +27,21 @@ export default function AdminLayout() {
     );
   }
 
-  // Respect device safe area at bottom (Android gesture indicator / iPhone home indicator).
-  // Phones with hardware buttons or older Androids report 0 — fall back to 8.
-  const bottomInset = Math.max(insets.bottom, 8);
-  const tabBarHeight = 56 + bottomInset;
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        animation: "shift",
         tabBarActiveTintColor: "#0e7c4a",
         tabBarInactiveTintColor: "#8a929e",
+        // The navigator adds the device's bottom safe area itself — no
+        // manual inset math, so the bar never collides with gesture
+        // pills or 3-button navigation.
         tabBarStyle: {
           backgroundColor: "#ffffff",
           borderTopColor: "#e8e6e0",
           borderTopWidth: 1,
-          height: tabBarHeight,
-          paddingTop: 8,
-          paddingBottom: bottomInset,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
           fontSize: 10,

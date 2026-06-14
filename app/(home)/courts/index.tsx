@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   View,
   Text,
   Pressable,
@@ -9,7 +8,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import Sheet from "../../../components/Sheet";
+import RequestDeleteSheet from "../../../components/workflow/RequestDeleteSheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -18,8 +21,12 @@ import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import {
   partnerListCourts,
   partnerCreateCourt,
+  partnerUpdateCourt,
+  partnerDeleteCourt,
+  deleteRequestRequired,
   ApiError,
   type PartnerCourt,
+  type DeleteRequestRequiredError,
 } from "../../../lib/api";
 
 export default function CourtHub() {
@@ -28,6 +35,9 @@ export default function CourtHub() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<PartnerCourt | null>(null);
+  const [requestTarget, setRequestTarget] =
+    useState<DeleteRequestRequiredError | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -90,97 +100,139 @@ export default function CourtHub() {
               <ActivityIndicator color="#c5853a" size="large" />
             </View>
           ) : (
-            <ScrollView
-              contentContainerClassName="px-5 pt-4 pb-12"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor="#c5853a"
-                />
-              }
+            // FlashList recycles rows — the add-form, error and search
+            // ride along as the list header; entrance animation lives on
+            // the container so it doesn't replay on recycle.
+            <Animated.View
+              entering={FadeInDown.duration(380)}
+              className="flex-1"
             >
-              <AddCourtForm onAdded={handleAdded} />
+              <FlashList
+                data={filtered}
+                keyExtractor={(c) => c.id}
+                renderItem={({ item }) => (
+                  <CourtCard c={item} onPress={() => setEditing(item)} />
+                )}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                contentContainerStyle={{
+                  paddingHorizontal: 20,
+                  paddingTop: 16,
+                  paddingBottom: 48,
+                }}
+                ItemSeparatorComponent={RowGap}
+                ListHeaderComponent={
+                  <View>
+                    <AddCourtForm onAdded={handleAdded} />
 
-              {error ? (
-                <View
-                  className="mt-4 rounded-md px-4 py-3"
-                  style={{
-                    backgroundColor: "#f6dccd",
-                    borderWidth: 1,
-                    borderColor: "rgba(193,74,55,0.3)",
-                  }}
-                >
-                  <Text
-                    className="text-[13px]"
-                    style={{ fontFamily: "Manrope", color: "#c14a37" }}
-                  >
-                    {error}
-                  </Text>
-                </View>
-              ) : null}
-
-              {courts.length > 0 ? (
-                <View className="mt-5">
-                  <View
-                    className="flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
-                    style={{
-                      shadowColor: "#0a1124",
-                      shadowOpacity: 0.04,
-                      shadowRadius: 6,
-                      shadowOffset: { width: 0, height: 1 },
-                      elevation: 1,
-                    }}
-                  >
-                    <Feather name="search" size={15} color="#a89c80" />
-                    <TextInput
-                      value={query}
-                      onChangeText={setQuery}
-                      placeholder="Search by name, number, place..."
-                      placeholderTextColor="#a89c80"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      className="flex-1 text-[14px] text-app-ink"
-                      style={{ fontFamily: "Manrope", paddingVertical: 0 }}
-                    />
-                    {query.length > 0 ? (
-                      <Pressable
-                        onPress={() => setQuery("")}
-                        hitSlop={8}
-                        className="active:opacity-50"
+                    {error ? (
+                      <View
+                        className="mt-4 rounded-md px-4 py-3"
+                        style={{
+                          backgroundColor: "#f6dccd",
+                          borderWidth: 1,
+                          borderColor: "rgba(193,74,55,0.3)",
+                        }}
                       >
-                        <Feather name="x" size={15} color="#8a5821" />
-                      </Pressable>
+                        <Text
+                          className="text-[13px]"
+                          style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                        >
+                          {error}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {courts.length > 0 ? (
+                      <View className="mt-5 mb-4">
+                        <View
+                          className="flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
+                          style={{
+                            shadowColor: "#0a1124",
+                            shadowOpacity: 0.04,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 1 },
+                            elevation: 1,
+                          }}
+                        >
+                          <Feather name="search" size={15} color="#a89c80" />
+                          <TextInput
+                            value={query}
+                            onChangeText={setQuery}
+                            placeholder="Search by name, number, place..."
+                            placeholderTextColor="#a89c80"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            className="flex-1 text-[14px] text-app-ink"
+                            style={{
+                              fontFamily: "Manrope",
+                              paddingVertical: 0,
+                            }}
+                          />
+                          {query.length > 0 ? (
+                            <Pressable
+                              onPress={() => setQuery("")}
+                              hitSlop={8}
+                              className="active:opacity-50"
+                            >
+                              <Feather name="x" size={15} color="#8a5821" />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      </View>
                     ) : null}
                   </View>
-                </View>
-              ) : null}
-
-              {courts.length === 0 ? (
-                <EmptyHub />
-              ) : filtered.length === 0 ? (
-                <NoMatches query={query} onClear={() => setQuery("")} />
-              ) : (
-                <View className="mt-4 gap-3">
-                  {filtered.map((c, i) => (
-                    <Animated.View
-                      key={c.id}
-                      entering={FadeInDown.duration(380).delay(
-                        Math.min(i, 10) * 35
-                      )}
-                    >
-                      <CourtCard c={c} />
-                    </Animated.View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
+                }
+                ListEmptyComponent={
+                  courts.length === 0 ? (
+                    <EmptyHub />
+                  ) : (
+                    <NoMatches query={query} onClear={() => setQuery("")} />
+                  )
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor="#c5853a"
+                  />
+                }
+              />
+            </Animated.View>
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <EditCourtSheet
+        court={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(next) => {
+          setCourts((prev) =>
+            prev
+              .map((c) => (c.id === next.id ? { ...c, ...next } : c))
+              .sort((a, b) => a.name.localeCompare(b.name))
+          );
+          setEditing(null);
+        }}
+        onDeleted={(id) => {
+          setCourts((prev) => prev.filter((c) => c.id !== id));
+          setEditing(null);
+        }}
+        onDeleteNeedsRequest={(target) => {
+          setEditing(null);
+          setRequestTarget(target);
+        }}
+      />
+
+      <RequestDeleteSheet
+        target={requestTarget}
+        onClose={() => setRequestTarget(null)}
+        onSubmitted={() => {
+          setRequestTarget(null);
+          Alert.alert("Sent for review", "The office admin has been notified.");
+        }}
+      />
     </View>
   );
 }
@@ -424,11 +476,18 @@ function AddCourtForm({ onAdded }: { onAdded: (c: PartnerCourt) => void }) {
 
 /* ─── Court card ─── */
 
-function CourtCard({ c }: { c: PartnerCourt }) {
+function CourtCard({
+  c,
+  onPress,
+}: {
+  c: PartnerCourt;
+  onPress: () => void;
+}) {
   const subtitle = [c.number, c.place].filter(Boolean).join(" · ");
   return (
-    <View
-      className="rounded-2xl bg-app-paper p-4 flex-row items-center gap-3"
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl bg-app-paper p-4 flex-row items-center gap-3 active:opacity-85"
       style={{
         shadowColor: "#0a1124",
         shadowOpacity: 0.05,
@@ -436,6 +495,8 @@ function CourtCard({ c }: { c: PartnerCourt }) {
         shadowOffset: { width: 0, height: 1 },
         elevation: 1,
       }}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit court ${c.name}`}
     >
       <View
         className="h-12 w-12 items-center justify-center rounded-md"
@@ -481,7 +542,210 @@ function CourtCard({ c }: { c: PartnerCourt }) {
           </Text>
         </View>
       ) : null}
-    </View>
+      <Feather name="edit-2" size={13} color="#a89c80" />
+    </Pressable>
+  );
+}
+
+/* ─── Edit / delete ─── */
+
+function EditCourtSheet({
+  court,
+  onClose,
+  onSaved,
+  onDeleted,
+  onDeleteNeedsRequest,
+}: {
+  court: PartnerCourt | null;
+  onClose: () => void;
+  onSaved: (next: PartnerCourt) => void;
+  onDeleted: (id: string) => void;
+  onDeleteNeedsRequest: (target: DeleteRequestRequiredError) => void;
+}) {
+  const [name, setName] = useState("");
+  const [number, setNumber] = useState("");
+  const [place, setPlace] = useState("");
+  const [busy, setBusy] = useState<"save" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Seed the draft whenever a court is opened.
+  useEffect(() => {
+    if (court) {
+      setName(court.name);
+      setNumber(court.number || "");
+      setPlace(court.place || "");
+      setError(null);
+      setBusy(null);
+    }
+  }, [court]);
+
+  async function save() {
+    if (!court || busy) return;
+    if (!name.trim()) {
+      setError("Court name can't be empty.");
+      return;
+    }
+    setBusy("save");
+    setError(null);
+    try {
+      const res = await partnerUpdateCourt(court.id, {
+        name: name.trim(),
+        number: number.trim(),
+        place: place.trim(),
+      });
+      onSaved({ ...court, ...res.court });
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Couldn't save. Try again."
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function confirmDelete() {
+    if (!court || busy) return;
+    Alert.alert(
+      "Remove this court?",
+      court.caseCount > 0
+        ? `${court.name} is on ${court.caseCount} ${court.caseCount === 1 ? "matter" : "matters"} — those keep their court details.`
+        : `${court.name} will be removed from the Court Hub.`,
+      [
+        { text: "Keep it", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => void doDelete() },
+      ]
+    );
+  }
+
+  async function doDelete() {
+    if (!court) return;
+    setBusy("delete");
+    setError(null);
+    try {
+      await partnerDeleteCourt(court.id);
+      onDeleted(court.id);
+    } catch (err) {
+      const reqd = deleteRequestRequired(err);
+      if (reqd) {
+        onDeleteNeedsRequest(reqd);
+      } else {
+        setError(
+          err instanceof ApiError ? err.message : "Couldn't delete. Try again."
+        );
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Sheet
+      visible={Boolean(court)}
+      onClose={busy ? () => {} : onClose}
+      eyebrow="Court Hub"
+      title={court?.name ?? ""}
+      showClose={!busy}
+      containerStyle={{ maxHeight: "88%" }}
+    >
+      <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+        {error ? (
+          <View
+            className="rounded-md px-3.5 py-2.5 mb-3"
+            style={{ backgroundColor: "#f6dccd" }}
+          >
+            <Text
+              className="text-[12.5px]"
+              style={{ fontFamily: "Manrope", color: "#c14a37" }}
+            >
+              {error}
+            </Text>
+          </View>
+        ) : null}
+
+        <Field
+          label="Court name"
+          value={name}
+          onChangeText={setName}
+          placeholder="District Court"
+          required
+          invalid={false}
+        />
+        <View className="mt-3 flex-row gap-3">
+          <View className="flex-1">
+            <Field
+              label="Court number"
+              value={number}
+              onChangeText={setNumber}
+              placeholder="III"
+            />
+          </View>
+          <View className="flex-1">
+            <Field
+              label="Place"
+              value={place}
+              onChangeText={setPlace}
+              placeholder="Krishnagiri"
+            />
+          </View>
+        </View>
+
+        <Pressable
+          onPress={save}
+          disabled={busy !== null}
+          className="mt-5 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+          style={{
+            backgroundColor: "#0a1124",
+            paddingVertical: 14,
+            shadowColor: "#0a1124",
+            shadowOpacity: 0.22,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 4,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Save court"
+        >
+          {busy === "save" ? (
+            <ActivityIndicator size="small" color="#f5ebd6" />
+          ) : (
+            <Feather name="check" size={15} color="#f5ebd6" />
+          )}
+          <Text
+            className="text-[13.5px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+          >
+            {busy === "save" ? "Saving…" : "Save changes"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={confirmDelete}
+          disabled={busy !== null}
+          className="mt-3 rounded-xl items-center justify-center flex-row gap-2 active:opacity-85"
+          style={{
+            minHeight: 46,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "rgba(193,74,55,0.35)",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Remove court"
+        >
+          {busy === "delete" ? (
+            <ActivityIndicator size="small" color="#c14a37" />
+          ) : (
+            <Feather name="trash-2" size={14} color="#c14a37" />
+          )}
+          <Text
+            className="text-[13px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#c14a37" }}
+          >
+            Remove from Court Hub
+          </Text>
+        </Pressable>
+        <View style={{ height: 16 }} />
+      </View>
+    </Sheet>
   );
 }
 
@@ -531,6 +795,10 @@ function Field({
 }
 
 /* ─── Empty / no matches ─── */
+
+function RowGap() {
+  return <View style={{ height: 12 }} />;
+}
 
 function EmptyHub() {
   return (
