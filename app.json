@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "com.legalezi.legaleasy",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0e1a2b"
