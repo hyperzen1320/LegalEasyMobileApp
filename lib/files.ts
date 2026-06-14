@@ -11,6 +11,7 @@ import {
   getAuthHeader,
   notifyUnauthorized,
   type CaseDocumentDTO,
+  type ChatAttachment,
 } from "./api";
 
 // The single front door for binary IO: authenticated downloads (exports,
@@ -520,4 +521,23 @@ export async function uploadCaseDocuments(
     } as unknown as Blob);
   }
   return apiUpload(`/api/app/cases/${caseId}/documents`, form);
+}
+
+/**
+ * Multipart upload for Senior Desk chat attachments. Same picker → FormData
+ * pipeline as case documents; the server reads form.getAll("files") and
+ * returns ready-to-send attachment metadata (up to 6 files per request).
+ */
+export async function uploadChatAttachments(
+  files: PickedFile[]
+): Promise<{ ok: true; attachments: ChatAttachment[]; errors: string[] }> {
+  const form = new FormData();
+  for (const f of files) {
+    form.append("files", {
+      uri: f.uri,
+      name: f.name,
+      type: f.mimeType,
+    } as unknown as Blob);
+  }
+  return apiUpload(`/api/app/chat/attachments`, form);
 }

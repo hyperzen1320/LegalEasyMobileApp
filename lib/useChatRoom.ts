@@ -9,6 +9,7 @@ import {
   partnerChatMessages,
   partnerChatSend,
   type ChatMessageDTO,
+  type ChatAttachment,
 } from "./api";
 
 // useChatRoom — the working hook for one open conversation. A direct
@@ -38,7 +39,7 @@ type State = {
 };
 
 export function useChatRoom(roomId: string | null): State & {
-  send: (body: string) => Promise<boolean>;
+  send: (body: string, attachments?: ChatAttachment[]) => Promise<boolean>;
   loadOlder: () => Promise<void>;
   markRead: () => Promise<void>;
   editMessage: (id: string, body: string) => Promise<boolean>;
@@ -171,10 +172,13 @@ export function useChatRoom(roomId: string | null): State & {
   }, [roomId, loadingOlder]);
 
   const send = useCallback(
-    async (body: string): Promise<boolean> => {
+    async (
+      body: string,
+      attachments: ChatAttachment[] = []
+    ): Promise<boolean> => {
       if (!roomId) return false;
       const trimmed = body.trim();
-      if (!trimmed) return false;
+      if (!trimmed && attachments.length === 0) return false;
       if (trimmed.length > CHAT_MAX_BODY) {
         setError(`Messages can be at most ${CHAT_MAX_BODY} characters.`);
         return false;
@@ -190,6 +194,7 @@ export function useChatRoom(roomId: string | null): State & {
         senderName: "You",
         senderRole: "",
         body: trimmed,
+        attachments,
         type: "text",
         isDeleted: false,
         editedAt: null,
@@ -201,7 +206,7 @@ export function useChatRoom(roomId: string | null): State & {
       setError(null);
 
       try {
-        const data = await partnerChatSend(roomId, trimmed);
+        const data = await partnerChatSend(roomId, trimmed, attachments);
         const real = { ...data.message, isMine: true };
         // Replace the optimistic row; dedupe in case the poll already
         // echoed the real id before the POST returned.

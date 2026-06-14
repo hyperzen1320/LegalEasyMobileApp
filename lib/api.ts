@@ -1496,6 +1496,13 @@ export type ChatRoomDTO = {
   unreadCount: number;
 };
 
+export type ChatAttachment = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
 export type ChatMessageDTO = {
   id: string;
   roomId: string;
@@ -1503,6 +1510,7 @@ export type ChatMessageDTO = {
   senderName: string;
   senderRole: string;
   body: string;
+  attachments?: ChatAttachment[];
   type: "text" | "system";
   isDeleted: boolean;
   editedAt: string | null;
@@ -1550,11 +1558,12 @@ export async function partnerChatMessages(
 
 export async function partnerChatSend(
   roomId: string,
-  body: string
+  body: string,
+  attachments?: ChatAttachment[]
 ): Promise<{ ok: true; message: ChatMessageDTO }> {
   return api(`/api/app/chat/rooms/${roomId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, attachments: attachments ?? [] }),
   });
 }
 
