@@ -541,3 +541,27 @@ export async function uploadChatAttachments(
   }
   return apiUpload(`/api/app/chat/attachments`, form);
 }
+
+/** Pick a single .csv and return its text (for the case importer). Returns
+ *  null when the user cancels. */
+export async function pickCsvText(): Promise<{
+  name: string;
+  text: string;
+} | null> {
+  const res = await DocumentPicker.getDocumentAsync({
+    type: [
+      "text/csv",
+      "text/comma-separated-values",
+      "application/csv",
+      "text/plain",
+      "*/*",
+    ],
+    copyToCacheDirectory: true,
+    multiple: false,
+  });
+  if (res.canceled) return null;
+  const asset = res.assets[0];
+  if (!asset) return null;
+  const text = await new File(asset.uri).text();
+  return { name: asset.name ?? "import.csv", text };
+}

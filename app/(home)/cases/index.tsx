@@ -29,6 +29,7 @@ import CaseFilterSheet, {
   type CaseFilterLabels,
 } from "../../../components/cases/CaseFilterSheet";
 import CaseDetailView from "../../../components/cases/CaseDetailView";
+import ImportCasesModal from "../../../components/cases/ImportCasesModal";
 import { useBreakpoint } from "../../../lib/useBreakpoint";
 import { formatDateForDisplay } from "../../../components/CaseFields";
 import {
@@ -60,6 +61,7 @@ export default function CaseVault() {
   const [filterLabels, setFilterLabels] = useState<CaseFilterLabels>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Tablet two-pane: ≥840dp the vault keeps the list on the left and
   // embeds the dossier on the right. Phones keep the pushed [id] route
@@ -201,6 +203,7 @@ export default function CaseVault() {
         <TopBar
           count={total}
           onExport={isPartnerAdmin ? () => setExporting(true) : null}
+          onImport={() => setImportOpen(true)}
         />
 
         <View className="flex-1 flex-row">
@@ -502,6 +505,12 @@ export default function CaseVault() {
           setFilterLabels(labels);
         }}
       />
+
+      <ImportCasesModal
+        visible={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => load("reset")}
+      />
     </View>
   );
 }
@@ -513,9 +522,11 @@ function RowGap() {
 function TopBar({
   count,
   onExport,
+  onImport,
 }: {
   count: number;
   onExport?: (() => void) | null;
+  onImport?: (() => void) | null;
 }) {
   const router = useRouter();
   const onArchive = () => router.push("/(home)/cases/disposed" as never);
@@ -562,6 +573,24 @@ function TopBar({
       >
         <Feather name="archive" size={15} color="#8a5821" />
       </Pressable>
+      {onImport ? (
+        <Pressable
+          onPress={onImport}
+          hitSlop={6}
+          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+          style={{
+            height: 36,
+            width: 36,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Import cases from CSV"
+        >
+          <Feather name="upload" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
       {onExport ? (
         <Pressable
           onPress={onExport}
