@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,14 +17,29 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import Sheet from "../../../components/Sheet";
 import { useChatRoom } from "../../../lib/useChatRoom";
 import { useChatUnread } from "../../../lib/chat-unread";
 import { useAuth } from "../../../lib/auth-context";
-import { CHAT_MAX_BODY, type ChatMessageDTO } from "../../../lib/api";
+import {
+  CHAT_MAX_BODY,
+  getAuthHeader,
+  type ChatMessageDTO,
+  type ChatAttachment,
+} from "../../../lib/api";
+import { getApiBaseUrl } from "../../../lib/config";
+import {
+  pickDocuments,
+  pickImages,
+  uploadChatAttachments,
+  downloadAuthorized,
+  shareFile,
+  extOf,
+  FileOpError,
+} from "../../../lib/files";
 import { rolePill } from "../../../components/RoleHelpers";
 
 // One conversation. Non-inverted FlashList anchored to the bottom (the
@@ -51,8 +67,20 @@ export default function ChatThread() {
   const [actionTarget, setActionTarget] = useState<ChatMessageDTO | null>(
     null
   );
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [attachSheet, setAttachSheet] = useState(false);
+  const [authHeader, setAuthHeader] = useState<Record<string, string>>({});
   const focusedRef = useRef(false);
   const lastMarkedRef = useRef<string | null>(null);
+  const listRef = useRef<FlashListRef<ChatMessageDTO>>(null);
+  const base = getApiBaseUrl();
+
+  // The attachment download/view URL is partner-scoped (Bearer required), so
+  // image thumbnails need the auth header. Resolve it once per open thread.
+  useEffect(() => {
+    getAuthHeader().then(setAuthHeader);
+  }, []);
 
   // Mark read while the thread is open: on focus, and whenever new
   // messages land (mirrors the web's mark-on-arrival). The unread
@@ -80,8 +108,8 @@ export default function ChatThread() {
 
   async function onSend() {
     const text = draft;
-    if (!text.trim()) return;
     if (editing) {
+      if (!text.trim()) return;
       const ok = await room.editMessage(editing.id, text);
       if (ok) {
         setEditing(null);
@@ -89,13 +117,59 @@ export default function ChatThread() {
       }
       return;
     }
+    if (!text.trim() && attachments.length === 0) return;
+    const staged = attachments;
     setDraft("");
-    const ok = await room.send(text);
+    setAttachments([]);
+    const ok = await room.send(text, staged);
     if (ok) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else {
-      // Restage so the user can retry without retyping.
+      // Restage text + attachments so the user can retry without redoing it.
       setDraft(text);
+      setAttachments(staged);
+    }
+  }
+
+  // Paperclip → pick (document / photo / camera) → upload up-front; the
+  // returned metadata is held as chips until the message is sent. Chat caps
+  // at 6 attachments per message.
+  async function pickAndUpload(kind: "document" | "library" | "camera") {
+    setAttachSheet(false);
+    const remaining = 6 - attachments.length;
+    if (remaining <= 0) return;
+    try {
+      const res =
+        kind === "document"
+          ? await pickDocuments(attachments.length)
+          : await pickImages(
+              kind === "camera" ? "camera" : "library",
+              attachments.length
+            );
+      if (!res) return; // cancelled
+      if (res.ok.length === 0) {
+        if (res.rejected.length > 0) {
+          Alert.alert(
+            "Couldn't attach",
+            "Use PDF, Word or image files under 25 MB."
+          );
+        }
+        return;
+      }
+      setUploading(true);
+      const up = await uploadChatAttachments(res.ok.slice(0, remaining));
+      setAttachments((prev) => [...prev, ...up.attachments].slice(0, 6));
+      if (up.errors && up.errors.length > 0) {
+        Alert.alert("Some files were skipped", up.errors.join("\n"));
+      }
+    } catch (err) {
+      if (err instanceof FileOpError && err.code === "cancelled") return;
+      Alert.alert(
+        "Couldn't attach",
+        err instanceof Error ? err.message : "Try again."
+      );
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -106,6 +180,7 @@ export default function ChatThread() {
   }
 
   const canModerate = (m: ChatMessageDTO) => m.isMine || isPartnerAdmin;
+  const canSend = draft.trim().length > 0 || attachments.length > 0;
 
   return (
     <View className="flex-1 bg-app-canvas">
@@ -168,6 +243,7 @@ export default function ChatThread() {
             </View>
           ) : (
             <FlashList
+              ref={listRef}
               data={room.messages}
               keyExtractor={(m) => m.id}
               renderItem={({ item, index }) => (
@@ -175,6 +251,8 @@ export default function ChatThread() {
                   m={item}
                   prev={room.messages[index - 1]}
                   onLongPress={() => openActions(item)}
+                  base={base}
+                  authHeader={authHeader}
                 />
               )}
               maintainVisibleContentPosition={{
@@ -259,54 +337,121 @@ export default function ChatThread() {
 
           {/* Composer */}
           <View
-            className="flex-row items-end gap-2.5 border-t border-app-edge bg-app-canvas px-4 pt-2.5"
+            className="border-t border-app-edge bg-app-canvas"
             style={{ paddingBottom: Math.max(insets.bottom, 10) }}
           >
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={editing ? "Edit your message…" : "Write to the desk…"}
-              placeholderTextColor="#a89c80"
-              multiline
-              maxLength={CHAT_MAX_BODY}
-              className="flex-1 rounded-2xl bg-app-paper px-4 text-[14.5px] text-app-ink"
-              style={{
-                fontFamily: "Manrope",
-                paddingTop: 10,
-                paddingBottom: 10,
-                maxHeight: 120,
-                borderWidth: 1,
-                borderColor: "#e3d9c0",
-              }}
-              accessibilityLabel="Message"
-            />
-            <Pressable
-              onPress={onSend}
-              disabled={room.sending || !draft.trim()}
-              className="items-center justify-center rounded-full active:opacity-85"
-              style={{
-                height: 42,
-                width: 42,
-                backgroundColor: draft.trim() ? "#c5853a" : "#e3d9c0",
-                shadowColor: "#c5853a",
-                shadowOpacity: draft.trim() ? 0.3 : 0,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: draft.trim() ? 3 : 0,
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={editing ? "Save edit" : "Send message"}
-            >
-              {room.sending ? (
-                <ActivityIndicator size="small" color="#2a1c08" />
-              ) : (
-                <Feather
-                  name={editing ? "check" : "send"}
-                  size={16}
-                  color={draft.trim() ? "#2a1c08" : "#a89c80"}
-                />
-              )}
-            </Pressable>
+            {/* Pending attachment chips */}
+            {attachments.length > 0 || uploading ? (
+              <View className="flex-row flex-wrap items-center gap-2 px-4 pt-2.5">
+                {attachments.map((a) => (
+                  <View
+                    key={a.id}
+                    className="flex-row items-center gap-1.5 rounded-md px-2 py-1.5"
+                    style={{ backgroundColor: "#efe5d0", maxWidth: 200 }}
+                  >
+                    <Feather
+                      name={isImageAtt(a) ? "image" : "file-text"}
+                      size={12}
+                      color="#8a5821"
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontFamily: "Manrope",
+                        fontSize: 11.5,
+                        color: "#4d4538",
+                        flexShrink: 1,
+                      }}
+                    >
+                      {a.filename}
+                    </Text>
+                    <Pressable
+                      onPress={() =>
+                        setAttachments((p) => p.filter((x) => x.id !== a.id))
+                      }
+                      hitSlop={6}
+                      className="active:opacity-50"
+                    >
+                      <Feather name="x" size={13} color="#8a5821" />
+                    </Pressable>
+                  </View>
+                ))}
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#c5853a" />
+                ) : null}
+              </View>
+            ) : null}
+
+            <View className="flex-row items-end gap-2 px-4 pt-2.5">
+              <Pressable
+                onPress={() => setAttachSheet(true)}
+                disabled={uploading || attachments.length >= 6}
+                className="items-center justify-center rounded-full active:opacity-60"
+                style={{
+                  height: 42,
+                  width: 42,
+                  backgroundColor: "#efe5d0",
+                  opacity: attachments.length >= 6 ? 0.5 : 1,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Attach a file"
+              >
+                <Feather name="paperclip" size={18} color="#8a5821" />
+              </Pressable>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                onFocus={() =>
+                  setTimeout(
+                    () => listRef.current?.scrollToEnd({ animated: true }),
+                    150
+                  )
+                }
+                placeholder={
+                  editing ? "Edit your message…" : "Write to the desk…"
+                }
+                placeholderTextColor="#a89c80"
+                multiline
+                maxLength={CHAT_MAX_BODY}
+                className="flex-1 rounded-2xl bg-app-paper px-4 text-[14.5px] text-app-ink"
+                style={{
+                  fontFamily: "Manrope",
+                  paddingTop: 10,
+                  paddingBottom: 10,
+                  maxHeight: 120,
+                  borderWidth: 1,
+                  borderColor: "#e3d9c0",
+                }}
+                accessibilityLabel="Message"
+              />
+              <Pressable
+                onPress={onSend}
+                disabled={room.sending || uploading || !canSend}
+                className="items-center justify-center rounded-full active:opacity-85"
+                style={{
+                  height: 42,
+                  width: 42,
+                  backgroundColor: canSend ? "#c5853a" : "#e3d9c0",
+                  shadowColor: "#c5853a",
+                  shadowOpacity: canSend ? 0.3 : 0,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 3 },
+                  elevation: canSend ? 3 : 0,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={editing ? "Save edit" : "Send message"}
+              >
+                {room.sending ? (
+                  <ActivityIndicator size="small" color="#2a1c08" />
+                ) : (
+                  <Feather
+                    name={editing ? "check" : "send"}
+                    size={16}
+                    color={canSend ? "#2a1c08" : "#a89c80"}
+                  />
+                )}
+              </Pressable>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -374,6 +519,39 @@ export default function ChatThread() {
           <View style={{ height: 16 }} />
         </View>
       </Sheet>
+
+      {/* Attach source */}
+      <Sheet
+        visible={attachSheet}
+        onClose={() => setAttachSheet(false)}
+        eyebrow="Attach"
+        title="Add to message"
+      >
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 6,
+            paddingBottom: 20,
+            gap: 10,
+          }}
+        >
+          <SheetAction
+            icon="file"
+            label="Document"
+            onPress={() => pickAndUpload("document")}
+          />
+          <SheetAction
+            icon="image"
+            label="Photo library"
+            onPress={() => pickAndUpload("library")}
+          />
+          <SheetAction
+            icon="camera"
+            label="Camera"
+            onPress={() => pickAndUpload("camera")}
+          />
+        </View>
+      </Sheet>
     </View>
   );
 }
@@ -422,10 +600,14 @@ function MessageRow({
   m,
   prev,
   onLongPress,
+  base,
+  authHeader,
 }: {
   m: ChatMessageDTO;
   prev?: ChatMessageDTO;
   onLongPress: () => void;
+  base: string;
+  authHeader: Record<string, string>;
 }) {
   if (m.type === "system") {
     return (
@@ -526,7 +708,7 @@ function MessageRow({
           >
             message removed
           </Text>
-        ) : (
+        ) : m.body ? (
           <Text
             className="text-[14px] leading-[21px]"
             style={{
@@ -536,7 +718,20 @@ function MessageRow({
           >
             {m.body}
           </Text>
-        )}
+        ) : null}
+        {!m.isDeleted && m.attachments && m.attachments.length > 0 ? (
+          <View style={{ marginTop: m.body ? 8 : 0, gap: 6 }}>
+            {m.attachments.map((a) => (
+              <AttachmentView
+                key={a.id}
+                att={a}
+                mine={mine}
+                base={base}
+                authHeader={authHeader}
+              />
+            ))}
+          </View>
+        ) : null}
         {!m.isDeleted && (m.editedAt || pending) ? (
           <Text
             className="mt-1 text-[8.5px] uppercase"
@@ -550,6 +745,134 @@ function MessageRow({
           </Text>
         ) : null}
       </View>
+    </Pressable>
+  );
+}
+
+function isImageAtt(a: ChatAttachment): boolean {
+  if (a.contentType?.startsWith("image/")) return true;
+  return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"].includes(
+    extOf(a.filename)
+  );
+}
+
+function formatBytes(n: number): string {
+  if (!n || n < 1024) return `${n || 0} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentView({
+  att,
+  mine,
+  base,
+  authHeader,
+}: {
+  att: ChatAttachment;
+  mine: boolean;
+  base: string;
+  authHeader: Record<string, string>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const url = `${base}/api/app/chat/attachments/${att.id}`;
+  const image = isImageAtt(att);
+
+  async function open() {
+    setBusy(true);
+    try {
+      const dl = await downloadAuthorized(
+        `/api/app/chat/attachments/${att.id}`,
+        { fallbackName: att.filename, mime: att.contentType }
+      );
+      await shareFile(dl.uri, dl.mime, att.filename);
+    } catch (err) {
+      if (
+        err instanceof FileOpError &&
+        (err.code === "cancelled" || err.code === "no_app")
+      ) {
+        return;
+      }
+      Alert.alert(
+        "Couldn't open",
+        err instanceof Error ? err.message : "Try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (image) {
+    return (
+      <Pressable
+        onPress={open}
+        className="overflow-hidden rounded-lg active:opacity-85"
+      >
+        <Image
+          source={{ uri: url, headers: authHeader }}
+          style={{
+            width: 210,
+            height: 158,
+            borderRadius: 8,
+            backgroundColor: "rgba(10,17,36,0.08)",
+          }}
+          resizeMode="cover"
+        />
+        {busy ? (
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(10,17,36,0.25)",
+            }}
+          >
+            <ActivityIndicator color="#f5ebd6" />
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={open}
+      className="flex-row items-center gap-2.5 rounded-lg px-3 py-2 active:opacity-85"
+      style={{
+        backgroundColor: mine ? "rgba(245,235,214,0.12)" : "#efe5d0",
+        maxWidth: 244,
+      }}
+    >
+      <Feather name="file-text" size={16} color={mine ? "#f5ebd6" : "#8a5821"} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            fontFamily: "Manrope-SemiBold",
+            fontSize: 12.5,
+            color: mine ? "#f5ebd6" : "#0a1124",
+          }}
+        >
+          {att.filename}
+        </Text>
+        <Text
+          style={{
+            fontFamily: "DMMono",
+            fontSize: 10,
+            color: mine ? "#c4baa3" : "#7a7060",
+          }}
+        >
+          {formatBytes(att.size)}
+        </Text>
+      </View>
+      {busy ? (
+        <ActivityIndicator size="small" color={mine ? "#f5ebd6" : "#8a5821"} />
+      ) : (
+        <Feather name="download" size={14} color={mine ? "#c4baa3" : "#8a5821"} />
+      )}
     </Pressable>
   );
 }
