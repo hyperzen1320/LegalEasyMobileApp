@@ -18,10 +18,10 @@ import {
   partnerListUsers,
   partnerUpdateUser,
   partnerDeleteUser,
-  getMe,
   ApiError,
   type PartnerStaffUser,
 } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
 import { Field, SheetField } from "../../../components/CaseFields";
 import {
   STAFF_ROLES,
@@ -34,8 +34,8 @@ import {
 export default function UserDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { isPartnerAdmin: isAdmin } = useAuth();
   const [user, setUser] = useState<PartnerStaffUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [meId, setMeId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export default function UserDetail() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [list, me] = await Promise.all([partnerListUsers(), getMe()]);
+      const list = await partnerListUsers();
       const found = list.users.find((u) => u.id === String(id));
       if (!found) {
         setError("User not found.");
@@ -52,7 +52,6 @@ export default function UserDetail() {
         setUser({ ...found, isYou: found.id === list.currentUserId });
         setError(null);
       }
-      setIsAdmin(me.user.userType === "partner_admin");
       setMeId(list.currentUserId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");

@@ -41,6 +41,7 @@ import {
 } from "@expo-google-fonts/dm-mono";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { View } from "react-native";
+import { AuthProvider } from "../lib/auth-context";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -77,16 +78,18 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "#f4ecda" },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(admin)" options={{ animation: "fade" }} />
-        <Stack.Screen name="(home)" options={{ animation: "fade" }} />
-      </Stack>
+      <AuthProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#f4ecda" },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(admin)" options={{ animation: "fade" }} />
+          <Stack.Screen name="(home)" options={{ animation: "fade" }} />
+        </Stack>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

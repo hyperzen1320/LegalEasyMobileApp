@@ -1,38 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { getMe, logout } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
 
 export default function AdminLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [checking, setChecking] = useState(true);
+  const { status, isGlobalAdmin } = useAuth();
 
+  // Mirror of home/_layout.tsx — partner users that wander into the
+  // admin shell get bounced back, expired sessions land on signin.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await getMe();
-        if (!alive) return;
-        if (data.user.userType !== "global_admin") {
-          router.replace("/home");
-          return;
-        }
-        setChecking(false);
-      } catch {
-        if (!alive) return;
-        await logout();
-        router.replace("/signin");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [router]);
+    if (status === "loading") return;
+    if (status === "guest") {
+      router.replace("/signin");
+      return;
+    }
+    if (!isGlobalAdmin) router.replace("/(home)/home");
+  }, [status, isGlobalAdmin, router]);
 
-  if (checking) {
+  if (status !== "authenticated" || !isGlobalAdmin) {
     return (
       <View className="flex-1 bg-admin-bg items-center justify-center">
         <ActivityIndicator color="#0e7c4a" size="large" />

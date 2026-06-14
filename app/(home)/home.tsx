@@ -12,29 +12,27 @@ import { StatusBar } from "expo-status-bar";
 import Svg, { Line, Path, Circle, G } from "react-native-svg";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import {
-  getMe,
   partnerDashboard,
-  type MobileUser,
-  type MobilePartner,
   type PartnerDashboardData,
 } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
+import { useNotificationCount } from "../../lib/notification-count";
+import { LiveOverview } from "../../components/LiveOverview";
+import BellSheet from "../../components/BellSheet";
 
 export default function PartnerHome() {
-  const router = useRouter();
-  const [user, setUser] = useState<MobileUser | null>(null);
-  const [partner, setPartner] = useState<MobilePartner | null>(null);
+  const { user, partner } = useAuth();
   const [data, setData] = useState<PartnerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bellOpen, setBellOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [me, dash] = await Promise.all([getMe(), partnerDashboard()]);
-      setUser(me.user);
-      setPartner(me.partner);
+      const dash = await partnerDashboard();
       setData(dash);
       setError(null);
     } catch (err) {
@@ -76,7 +74,10 @@ export default function PartnerHome() {
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar partnerName={partner?.name ?? "Your chambers"} />
+        <TopBar
+          partnerName={partner?.name ?? "Your chambers"}
+          onOpenBell={() => setBellOpen(true)}
+        />
         <ScrollView
           contentContainerClassName="px-5 pt-5 pb-8"
           showsVerticalScrollIndicator={false}
@@ -106,22 +107,31 @@ export default function PartnerHome() {
 
           <StatsGrid stats={data?.stats} />
 
-          <PhaseTwoCallouts />
+          <LiveOverview onOpenBell={() => setBellOpen(true)} />
 
           <TodaysBoard board={data?.todaysBoard ?? []} />
         </ScrollView>
       </SafeAreaView>
+
+      <BellSheet visible={bellOpen} onClose={() => setBellOpen(false)} />
     </View>
   );
 }
 
 /* ───────── Top bar ───────── */
-function TopBar({ partnerName }: { partnerName: string }) {
+function TopBar({
+  partnerName,
+  onOpenBell,
+}: {
+  partnerName: string;
+  onOpenBell: () => void;
+}) {
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
     month: "short",
   });
+  const { count } = useNotificationCount();
   return (
     <View
       className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between"
@@ -146,16 +156,34 @@ function TopBar({ partnerName }: { partnerName: string }) {
       </View>
       <View className="relative">
         <Pressable
+          onPress={onOpenBell}
           className="h-10 w-10 items-center justify-center rounded-full active:opacity-50"
           style={{ backgroundColor: "rgba(10,17,36,0.05)" }}
-          accessibilityLabel="Notifications"
+          accessibilityLabel={
+            count > 0
+              ? `Notifications, ${count} pending`
+              : "Notifications"
+          }
         >
           <Feather name="bell" size={18} color="#0a1124" />
         </Pressable>
-        <View
-          className="absolute right-2 top-2 h-2 w-2 rounded-full"
-          style={{ backgroundColor: "#c5853a" }}
-        />
+        {count > 0 ? (
+          <View
+            className="absolute -right-0.5 -top-0.5 min-w-[16px] h-[16px] px-1 items-center justify-center rounded-full"
+            style={{ backgroundColor: "#c14a37" }}
+          >
+            <Text
+              className="text-[9px] tabular-nums"
+              style={{
+                fontFamily: "DMMono-Medium",
+                color: "#f5ebd6",
+                letterSpacing: 0.4,
+              }}
+            >
+              {count > 99 ? "99+" : count}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -420,65 +448,6 @@ function StatCard({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-/* ───────── Phase 2 callouts ───────── */
-function PhaseTwoCallouts() {
-  const items: Array<{
-    title: string;
-    subtitle: string;
-    icon: keyof typeof Feather.glyphMap;
-  }> = [
-    {
-      title: "Work Flow",
-      subtitle: "Boards & task tracking · Phase 2",
-      icon: "trello",
-    },
-    {
-      title: "Senior Desk",
-      subtitle: "Reminders & advocate coordination · Phase 2",
-      icon: "users",
-    },
-  ];
-  return (
-    <View className="mt-5 gap-3">
-      {items.map((it, i) => (
-        <Animated.View
-          key={it.title}
-          entering={FadeIn.duration(700).delay(280 + i * 80)}
-          className="rounded-xl bg-app-paper px-4 py-3.5 flex-row items-center gap-3"
-          style={{
-            shadowColor: "#0a1124",
-            shadowOpacity: 0.04,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 1,
-          }}
-        >
-          <View
-            className="h-10 w-10 items-center justify-center rounded-lg"
-            style={{ backgroundColor: "#efe5d0" }}
-          >
-            <Feather name={it.icon} size={18} color="#8a5821" />
-          </View>
-          <View className="flex-1">
-            <Text
-              className="text-[16px] font-semibold tracking-tight text-app-ink"
-              style={{ fontFamily: "Crimson-SemiBold" }}
-            >
-              {it.title}
-            </Text>
-            <Text
-              className="mt-0.5 text-[11px] text-app-fg-muted"
-              style={{ fontFamily: "Manrope" }}
-            >
-              {it.subtitle}
-            </Text>
-          </View>
-        </Animated.View>
-      ))}
-    </View>
   );
 }
 

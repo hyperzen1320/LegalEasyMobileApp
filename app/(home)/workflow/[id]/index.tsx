@@ -550,7 +550,14 @@ function Header({
           colors={gradient as [string, string]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ position: "absolute", inset: 0, width: 36, height: 36 }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: 6,
+          }}
         />
         <Feather name="grid" size={15} color="#ffffff" />
       </View>
