@@ -15,16 +15,20 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   partnerDashboard,
+  partnerListBoards,
   type PartnerDashboardData,
 } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { useChatUnread } from "../../lib/chat-unread";
 import { useNotificationCount } from "../../lib/notification-count";
 import { LiveOverview } from "../../components/LiveOverview";
 import BellSheet from "../../components/BellSheet";
 
 export default function PartnerHome() {
   const { user, partner } = useAuth();
+  const { unread } = useChatUnread();
   const [data, setData] = useState<PartnerDashboardData | null>(null);
+  const [boardCount, setBoardCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +36,14 @@ export default function PartnerHome() {
 
   const load = useCallback(async () => {
     try {
-      const dash = await partnerDashboard();
+      // Boards ride alongside the dashboard so the Work Flow tile shows a
+      // live count; a board failure must not blank the whole screen.
+      const [dash, boards] = await Promise.all([
+        partnerDashboard(),
+        partnerListBoards().catch(() => ({ boards: [] })),
+      ]);
       setData(dash);
+      setBoardCount(boards.boards.length);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -105,11 +115,15 @@ export default function PartnerHome() {
             stats={data?.stats}
           />
 
-          <StatsGrid stats={data?.stats} />
-
-          <LiveOverview onOpenBell={() => setBellOpen(true)} />
+          <StatsGrid
+            stats={data?.stats}
+            boardCount={boardCount}
+            unreadCount={unread.totalUnread}
+          />
 
           <TodaysBoard board={data?.todaysBoard ?? []} />
+
+          <LiveOverview onOpenBell={() => setBellOpen(true)} />
         </ScrollView>
       </SafeAreaView>
 
@@ -319,8 +333,12 @@ function Hero({
 /* ───────── Stats grid (2x2) ───────── */
 function StatsGrid({
   stats,
+  boardCount,
+  unreadCount,
 }: {
   stats?: PartnerDashboardData["stats"];
+  boardCount: number;
+  unreadCount: number;
 }) {
   const router = useRouter();
   const items: Array<{
@@ -357,6 +375,20 @@ function StatsGrid({
       variant: "paper",
       icon: "briefcase",
       href: "/(home)/cases",
+    },
+    {
+      label: "Work Flow",
+      value: boardCount,
+      variant: "ink",
+      icon: "trello",
+      href: "/(home)/workflow",
+    },
+    {
+      label: "Senior Desk",
+      value: unreadCount,
+      variant: "paper",
+      icon: "message-square",
+      href: "/(home)/senior-desk",
     },
   ];
 
