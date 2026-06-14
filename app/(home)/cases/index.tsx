@@ -18,12 +18,14 @@ import { FlashList } from "@shopify/flash-list";
 import {
   partnerListCases,
   partnerDeleteCase,
+  partnerBulkDeleteCases,
   ApiError,
   type CaseListFilters,
   type PartnerCase,
 } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import ExportSheet from "../../../components/ExportSheet";
+import ConfirmSheet from "../../../components/ConfirmSheet";
 import CaseFilterSheet, {
   countActive,
   type CaseFilterLabels,
@@ -62,6 +64,18 @@ export default function CaseVault() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  // Multi-select (office-admin only — bulk delete + export are admin-gated
+  // server-side). `selectAllMatching` flips to "every matter matching the
+  // current filters", spanning pages, for an export/delete of the whole set.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  // One sheet serves the single-row trash and the bulk delete.
+  const [confirm, setConfirm] = useState<
+    { kind: "row"; id: string; caseNo: string } | { kind: "bulk" } | null
+  >(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // Tablet two-pane: ≥840dp the vault keeps the list on the left and
   // embeds the dossier on the right. Phones keep the pushed [id] route
@@ -196,15 +210,108 @@ export default function CaseVault() {
     return chips;
   }, [filters, filterLabels]);
 
+  // ── Selection ──
+  const selectionCount = selectAllMatching ? total : selectedIds.size;
+  const allLoadedSelected =
+    cases.length > 0 &&
+    (selectAllMatching || cases.every((c) => selectedIds.has(c.id)));
+  const moreThanLoaded = total > cases.length;
+  const isSelected = useCallback(
+    (id: string) => selectAllMatching || selectedIds.has(id),
+    [selectAllMatching, selectedIds]
+  );
+
+  // A changed filter/search means a different result set — drop any prior
+  // selection so a stale id can't ride into a bulk action.
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectAllMatching(false);
+  }, [params]);
+
+  const enterSelection = useCallback((initialId?: string) => {
+    setSelectionMode(true);
+    setSelectAllMatching(false);
+    setSelectedIds(initialId ? new Set([initialId]) : new Set());
+  }, []);
+
+  const exitSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setSelectAllMatching(false);
+  }, []);
+
+  const toggleSelect = useCallback(
+    (id: string) => {
+      if (selectAllMatching) {
+        // Stepping out of "all matching" — fall back to the loaded page
+        // minus the row just unticked.
+        setSelectAllMatching(false);
+        setSelectedIds(new Set(cases.map((c) => c.id).filter((x) => x !== id)));
+        return;
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    },
+    [selectAllMatching, cases]
+  );
+
+  const toggleSelectAllLoaded = useCallback(() => {
+    setSelectAllMatching(false);
+    setSelectedIds(allLoadedSelected ? new Set() : new Set(cases.map((c) => c.id)));
+  }, [allLoadedSelected, cases]);
+
+  // ── Deletes (single + bulk) ──
+  const runDelete = useCallback(async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    try {
+      if (confirm.kind === "row") {
+        await partnerDeleteCase(confirm.id);
+        setCases((prev) => prev.filter((c) => c.id !== confirm.id));
+        setTotal((t) => Math.max(0, t - 1));
+      } else {
+        await partnerBulkDeleteCases(
+          selectAllMatching
+            ? { all: true, filters: params }
+            : { ids: [...selectedIds] }
+        );
+        exitSelection();
+        await load("reset");
+      }
+      setConfirm(null);
+    } catch (err) {
+      Alert.alert(
+        "Couldn't delete",
+        err instanceof ApiError ? err.message : "Try again."
+      );
+    } finally {
+      setConfirmBusy(false);
+    }
+  }, [confirm, selectAllMatching, params, selectedIds, exitSelection, load]);
+
   return (
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar
-          count={total}
-          onExport={isPartnerAdmin ? () => setExporting(true) : null}
-          onImport={() => setImportOpen(true)}
-        />
+        {selectionMode ? (
+          <SelectionTopBar
+            count={selectionCount}
+            onCancel={exitSelection}
+            allLoadedSelected={allLoadedSelected}
+            onToggleSelectAll={toggleSelectAllLoaded}
+          />
+        ) : (
+          <TopBar
+            count={total}
+            onExport={isPartnerAdmin ? () => setExporting(true) : null}
+            onImport={() => setImportOpen(true)}
+            onSelect={isPartnerAdmin ? () => enterSelection() : null}
+          />
+        )}
 
         <View className="flex-1 flex-row">
         {/* Left pane: search + rolls (the whole screen on phones) */}
@@ -333,49 +440,46 @@ export default function CaseVault() {
           >
             <FlashList
               data={cases}
-              extraData={selectedId}
+              extraData={
+                selectionMode
+                  ? `${selectAllMatching ? "ALL" : [...selectedIds].join(",")}|sel`
+                  : `${selectedId ?? ""}|view`
+              }
               keyExtractor={(c) => c.id}
               renderItem={({ item }) => (
                 <CaseCard
                   c={item}
-                  selected={isExpanded && selectedId === item.id}
-                  onPress={() =>
-                    isExpanded
-                      ? setSelectedId(item.id)
-                      : router.push(`/(home)/cases/${item.id}` as never)
+                  selectionMode={selectionMode}
+                  selected={
+                    selectionMode
+                      ? isSelected(item.id)
+                      : isExpanded && selectedId === item.id
                   }
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelect(item.id);
+                    } else if (isExpanded) {
+                      setSelectedId(item.id);
+                    } else {
+                      router.push(`/(home)/cases/${item.id}` as never);
+                    }
+                  }}
+                  onLongPress={
+                    isPartnerAdmin && !selectionMode
+                      ? () => enterSelection(item.id)
+                      : undefined
+                  }
+                  onToggleSelect={() => toggleSelect(item.id)}
                   onEdit={() =>
                     router.push(`/(home)/cases/edit/${item.id}` as never)
                   }
-                  onDelete={() => {
-                    Alert.alert(
-                      `Delete ${item.caseNo}?`,
-                      "The matter will be removed from the Case Vault, dashboard and hearing track. Soft delete — recoverable on request.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: async () => {
-                            try {
-                              await partnerDeleteCase(item.id);
-                              setCases((prev) =>
-                                prev.filter((x) => x.id !== item.id)
-                              );
-                              setTotal((t) => Math.max(0, t - 1));
-                            } catch (err) {
-                              Alert.alert(
-                                "Couldn't delete",
-                                err instanceof ApiError
-                                  ? err.message
-                                  : "Try again."
-                              );
-                            }
-                          },
-                        },
-                      ]
-                    );
-                  }}
+                  onDelete={() =>
+                    setConfirm({
+                      kind: "row",
+                      id: item.id,
+                      caseNo: item.caseNo,
+                    })
+                  }
                 />
               )}
               showsVerticalScrollIndicator={false}
@@ -433,6 +537,17 @@ export default function CaseVault() {
             />
           </Animated.View>
         )}
+        {selectionMode ? (
+          <SelectionActionBar
+            count={selectionCount}
+            total={total}
+            selectAllMatching={selectAllMatching}
+            moreThanLoaded={moreThanLoaded}
+            onSelectAllMatching={() => setSelectAllMatching(true)}
+            onExport={() => setExporting(true)}
+            onDelete={() => setConfirm({ kind: "bulk" })}
+          />
+        ) : null}
         </View>
 
         {/* Right pane: the dossier (tablets only) */}
@@ -481,9 +596,13 @@ export default function CaseVault() {
         eyebrow="Case Vault"
         title="Export the case rolls"
         contextLine={
-          activeFilterCount > 0 || search
-            ? `Current view · ${total} matters (filters carry into the file)`
-            : `All active matters · ${total}`
+          selectionMode && selectionCount > 0
+            ? `${selectionCount} selected ${
+                selectionCount === 1 ? "matter" : "matters"
+              }`
+            : activeFilterCount > 0 || search
+              ? `Current view · ${total} matters (filters carry into the file)`
+              : `All active matters · ${total}`
         }
         columns={{
           // "Disposed On" is always empty on the active vault; the
@@ -492,7 +611,16 @@ export default function CaseVault() {
           defaultKeys: CASE_EXPORT_DEFAULT_KEYS,
         }}
         run={(format, columnKeys) =>
-          exportCases(format, { filters: params, columns: columnKeys })
+          exportCases(format, {
+            filters: params,
+            columns: columnKeys,
+            // A concrete tick-list exports exactly those rows; "select all
+            // matching" falls back to the filter query (the whole set).
+            selectedIds:
+              selectionMode && !selectAllMatching && selectedIds.size > 0
+                ? [...selectedIds]
+                : undefined,
+          })
         }
       />
 
@@ -511,6 +639,34 @@ export default function CaseVault() {
         onClose={() => setImportOpen(false)}
         onImported={() => load("reset")}
       />
+
+      <ConfirmSheet
+        visible={confirm !== null}
+        onClose={() => setConfirm(null)}
+        onConfirm={runDelete}
+        busy={confirmBusy}
+        title={
+          confirm?.kind === "bulk"
+            ? `Delete ${selectionCount} ${
+                selectionCount === 1 ? "matter" : "matters"
+              }?`
+            : "Delete this matter?"
+        }
+        message={
+          confirm?.kind === "bulk"
+            ? `The ${selectionCount} selected ${
+                selectionCount === 1 ? "matter leaves" : "matters leave"
+              } the database for good, freeing ${
+                selectionCount === 1 ? "its CNR" : "their CNRs"
+              } for re-use. This can't be undone.`
+            : `${
+                confirm?.caseNo ?? "This matter"
+              } leaves the database for good, freeing its CNR for re-use. This can't be undone — to keep a finished matter on record, set its status to Disposed instead.`
+        }
+        confirmLabel={
+          confirm?.kind === "bulk" ? `Delete ${selectionCount}` : "Delete"
+        }
+      />
     </View>
   );
 }
@@ -523,10 +679,12 @@ function TopBar({
   count,
   onExport,
   onImport,
+  onSelect,
 }: {
   count: number;
   onExport?: (() => void) | null;
   onImport?: (() => void) | null;
+  onSelect?: (() => void) | null;
 }) {
   const router = useRouter();
   const onArchive = () => router.push("/(home)/cases/disposed" as never);
@@ -609,6 +767,24 @@ function TopBar({
           <Feather name="download" size={15} color="#8a5821" />
         </Pressable>
       ) : null}
+      {onSelect ? (
+        <Pressable
+          onPress={onSelect}
+          hitSlop={6}
+          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+          style={{
+            height: 36,
+            width: 36,
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Select matters for bulk actions"
+        >
+          <Feather name="check-square" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={() => router.push("/(home)/cases/new")}
         className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
@@ -633,18 +809,195 @@ function TopBar({
   );
 }
 
+function SelectionTopBar({
+  count,
+  onCancel,
+  allLoadedSelected,
+  onToggleSelectAll,
+}: {
+  count: number;
+  onCancel: () => void;
+  allLoadedSelected: boolean;
+  onToggleSelectAll: () => void;
+}) {
+  return (
+    <View
+      className="border-b border-app-edge px-4 py-3.5 flex-row items-center"
+      style={{ gap: 12, backgroundColor: "#fbf6ea" }}
+    >
+      <Pressable
+        onPress={onCancel}
+        hitSlop={10}
+        className="active:opacity-50 h-9 w-9 items-center justify-center rounded-md"
+        style={{ backgroundColor: "#ffffff" }}
+        accessibilityLabel="Cancel selection"
+      >
+        <Feather name="x" size={17} color="#0a1124" />
+      </Pressable>
+      <Text
+        className="flex-1 text-[15px] text-app-ink"
+        style={{ fontFamily: "Manrope-SemiBold" }}
+      >
+        {count > 0 ? `${count} selected` : "Select matters"}
+      </Text>
+      <Pressable
+        onPress={onToggleSelectAll}
+        hitSlop={8}
+        className="flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5 active:opacity-70"
+        style={{ backgroundColor: "#efe5d0" }}
+        accessibilityRole="button"
+        accessibilityLabel={
+          allLoadedSelected ? "Clear selection" : "Select all on this page"
+        }
+      >
+        <Feather
+          name={allLoadedSelected ? "square" : "check-square"}
+          size={13}
+          color="#8a5821"
+        />
+        <Text
+          className="text-[11px]"
+          style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+        >
+          {allLoadedSelected ? "Clear" : "Page"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function SelectionActionBar({
+  count,
+  total,
+  selectAllMatching,
+  moreThanLoaded,
+  onSelectAllMatching,
+  onExport,
+  onDelete,
+}: {
+  count: number;
+  total: number;
+  selectAllMatching: boolean;
+  moreThanLoaded: boolean;
+  onSelectAllMatching: () => void;
+  onExport: () => void;
+  onDelete: () => void;
+}) {
+  const disabled = count === 0;
+  return (
+    <View
+      className="border-t border-app-edge bg-app-paper px-4 pt-3 pb-3"
+      style={{
+        shadowColor: "#0a1124",
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: -3 },
+        elevation: 8,
+      }}
+    >
+      {count > 0 && !selectAllMatching && moreThanLoaded ? (
+        <Pressable
+          onPress={onSelectAllMatching}
+          className="mb-2.5 self-start active:opacity-60"
+          hitSlop={6}
+        >
+          <Text
+            className="text-[12px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+          >
+            Select all {total} matters
+          </Text>
+        </Pressable>
+      ) : selectAllMatching ? (
+        <Text
+          className="mb-2.5 text-[12px] text-app-fg-muted"
+          style={{ fontFamily: "Manrope" }}
+        >
+          All {total} matching {total === 1 ? "matter" : "matters"} selected
+        </Text>
+      ) : null}
+      <View className="flex-row gap-3">
+        <Pressable
+          onPress={onExport}
+          disabled={disabled}
+          className="flex-1 rounded-md py-3 items-center justify-center flex-row gap-2 active:opacity-80"
+          style={{
+            backgroundColor: "#ffffff",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          <Feather name="download" size={14} color="#8a5821" />
+          <Text
+            className="text-[13px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+          >
+            Export{count > 0 ? ` (${count})` : ""}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onDelete}
+          disabled={disabled}
+          className="flex-1 rounded-md py-3 items-center justify-center flex-row gap-2 active:opacity-80"
+          style={{ backgroundColor: "#c14a37", opacity: disabled ? 0.5 : 1 }}
+        >
+          <Feather name="trash-2" size={14} color="#ffffff" />
+          <Text
+            className="text-[13px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#ffffff" }}
+          >
+            Delete{count > 0 ? ` (${count})` : ""}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SelectCheckbox({
+  checked,
+  onPress,
+}: {
+  checked: boolean;
+  onPress?: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      className="h-7 w-7 items-center justify-center rounded-full"
+      style={{
+        backgroundColor: checked ? "#c5853a" : "transparent",
+        borderWidth: checked ? 0 : 1.5,
+        borderColor: "#c5b99e",
+      }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+    >
+      {checked ? <Feather name="check" size={15} color="#2a1c08" /> : null}
+    </Pressable>
+  );
+}
+
 function CaseCard({
   c,
   onPress,
+  onLongPress,
   onEdit,
   onDelete,
+  onToggleSelect,
   selected,
+  selectionMode,
 }: {
   c: PartnerCase;
   onPress: () => void;
+  onLongPress?: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleSelect?: () => void;
   selected?: boolean;
+  selectionMode?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const next = c.nextHearingDate ? new Date(c.nextHearingDate) : null;
@@ -667,6 +1020,8 @@ function CaseCard({
     <>
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={250}
       className="rounded-xl bg-app-paper p-4 active:opacity-90"
       style={{
         shadowColor: "#0a1124",
@@ -802,15 +1157,19 @@ function CaseCard({
             </Text>
           </View>
         )}
-        <Pressable
-          onPress={() => setMenuOpen(true)}
-          hitSlop={10}
-          className="h-7 w-7 items-center justify-center rounded-md active:opacity-50"
-          style={{ backgroundColor: "#efe5d0" }}
-          accessibilityLabel="Case actions"
-        >
-          <Feather name="more-horizontal" size={16} color="#8a5821" />
-        </Pressable>
+        {selectionMode ? (
+          <SelectCheckbox checked={!!selected} onPress={onToggleSelect} />
+        ) : (
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            hitSlop={10}
+            className="h-7 w-7 items-center justify-center rounded-md active:opacity-50"
+            style={{ backgroundColor: "#efe5d0" }}
+            accessibilityLabel="Case actions"
+          >
+            <Feather name="more-horizontal" size={16} color="#8a5821" />
+          </Pressable>
+        )}
       </View>
     </Pressable>
 
