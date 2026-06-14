@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -859,7 +860,7 @@ function Header({
           style={{ backgroundColor: "#ffffff" }}
           accessibilityLabel="Export board data"
         >
-          <Feather name="download" size={15} color={accent} />
+          <Feather name="download" size={15} color="#0a1124" />
         </Pressable>
       ) : null}
 
@@ -872,7 +873,7 @@ function Header({
           style={{ backgroundColor: "#ffffff" }}
           accessibilityLabel="Board settings"
         >
-          <Feather name="more-horizontal" size={15} color={accent} />
+          <Feather name="more-horizontal" size={15} color="#0a1124" />
         </Pressable>
       ) : null}
 
@@ -884,7 +885,7 @@ function Header({
         style={{ backgroundColor: "#ffffff" }}
         accessibilityLabel="Open activity"
       >
-        <Feather name="bell" size={15} color={accent} />
+        <Feather name="bell" size={15} color="#0a1124" />
         {unreadCount > 0 ? (
           <View
             style={{
@@ -945,6 +946,10 @@ function ListColumn({
 }) {
   const stripe = list.color || accent;
   const isPending = isTemp(list.id);
+  const { height: winH } = useWindowDimensions();
+  // Hug content like the web column; cap near the viewport so a long list
+  // scrolls inside instead of the composer floating far below the cards.
+  const colMaxHeight = Math.max(300, winH - 240);
   const bodyRef = useRef<ScrollView | null>(null);
   const dropHere =
     dnd.dropTarget && dnd.dropTarget.listId === list.id
@@ -955,6 +960,7 @@ function ListColumn({
     <View
       style={{
         width: listWidth,
+        maxHeight: colMaxHeight,
         backgroundColor: "rgba(255,255,255,0.92)",
         borderRadius: 14,
         overflow: "hidden",
@@ -1049,7 +1055,7 @@ function ListColumn({
         }
         scrollEventThrottle={16}
         scrollEnabled={!dnd.isDragging}
-        style={{ maxHeight: 480 }}
+        style={{ flexShrink: 1 }}
         contentContainerStyle={{
           paddingHorizontal: 8,
           paddingTop: 4,
@@ -1135,10 +1141,11 @@ function ListColumn({
             );
           })()
         )}
-      </ScrollView>
 
-      {/* Add card composer */}
-      <AddCardComposer onSubmit={onAddCard} />
+        {/* Composer rides inside the scroll so it sits directly after the
+            last card (web parity) instead of pinned to the column bottom. */}
+        <AddCardComposer onSubmit={onAddCard} />
+      </ScrollView>
     </View>
   );
 }
