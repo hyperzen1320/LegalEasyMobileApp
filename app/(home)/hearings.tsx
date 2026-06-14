@@ -17,10 +17,16 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   partnerListHearings,
   partnerUpdateCase,
+  partnerGetNoticeTemplate,
   ApiError,
   type HearingBucket,
   type PartnerHearingItem,
 } from "../../lib/api";
+import {
+  renderNotice,
+  parseDateLocal,
+  type NoticeData,
+} from "../../lib/notice-template";
 import { DateField, SheetField } from "../../components/CaseFields";
 import Sheet from "../../components/Sheet";
 import { useAuth } from "../../lib/auth-context";
@@ -72,6 +78,7 @@ export default function Hearings() {
   const [items, setItems] = useState<PartnerHearingItem[]>([]);
   const [counts, setCounts] = useState({ today: 0, tomorrow: 0, pending: 0 });
   const [officeName, setOfficeName] = useState("");
+  const [template, setTemplate] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +129,14 @@ export default function Hearings() {
       setLoading(false);
     })();
   }, [bucket, load]);
+
+  // The office's WhatsApp notice template — fetched once; the WhatsApp button
+  // fills it per matter. Falls back to the bilingual default if absent.
+  useEffect(() => {
+    partnerGetNoticeTemplate()
+      .then((r) => setTemplate(r.template))
+      .catch(() => {});
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -239,6 +254,7 @@ export default function Hearings() {
                     <PendingCard
                       c={c}
                       officeName={officeName}
+                      template={template}
                       onUpdated={() => load(bucket)}
                     />
                   </Animated.View>
@@ -273,6 +289,7 @@ export default function Hearings() {
                           c={c}
                           bucket={bucket}
                           officeName={officeName}
+                          template={template}
                           onUpdate={() => setUpdating(c)}
                         />
                       ))}
@@ -293,6 +310,7 @@ export default function Hearings() {
                       c={c}
                       bucket={bucket}
                       officeName={officeName}
+                      template={template}
                       onUpdate={() => setUpdating(c)}
                     />
                   </Animated.View>
@@ -596,11 +614,13 @@ function ScheduledRow({
   c,
   bucket,
   officeName,
+  template,
   onUpdate,
 }: {
   c: PartnerHearingItem;
   bucket: HearingBucket;
   officeName: string;
+  template: string;
   onUpdate: () => void;
 }) {
   const router = useRouter();
@@ -681,6 +701,7 @@ function ScheduledRow({
           c={c}
           bucket={bucket}
           officeName={officeName}
+          template={template}
           hasNumber={hasWa}
         />
         <Pressable
@@ -729,10 +750,12 @@ function ScheduledRow({
 function PendingCard({
   c,
   officeName,
+  template,
   onUpdated,
 }: {
   c: PartnerHearingItem;
   officeName: string;
+  template: string;
   onUpdated: () => void;
 }) {
   const router = useRouter();
@@ -906,6 +929,7 @@ function PendingCard({
           c={c}
           bucket="pending"
           officeName={officeName}
+          template={template}
           hasNumber={hasWa}
         />
       </View>
@@ -944,16 +968,18 @@ function WhatsAppButton({
   c,
   bucket,
   officeName,
+  template,
   hasNumber,
 }: {
   c: PartnerHearingItem;
   bucket: HearingBucket;
   officeName: string;
+  template: string;
   hasNumber: boolean;
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, bucket, officeName, hasNumber)}
+      onPress={() => openWhatsApp(c, bucket, officeName, template, hasNumber)}
       className="h-10 w-10 rounded-full items-center justify-center active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1004,16 +1030,18 @@ function WhatsAppPill({
   c,
   bucket,
   officeName,
+  template,
   hasNumber,
 }: {
   c: PartnerHearingItem;
   bucket: HearingBucket;
   officeName: string;
+  template: string;
   hasNumber: boolean;
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, bucket, officeName, hasNumber)}
+      onPress={() => openWhatsApp(c, bucket, officeName, template, hasNumber)}
       className="flex-1 rounded-md py-2.5 items-center justify-center flex-row gap-2 active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1063,6 +1091,7 @@ async function openWhatsApp(
   c: PartnerHearingItem,
   bucket: HearingBucket,
   officeName: string,
+  template: string,
   hasNumber: boolean
 ) {
   if (!hasNumber) {
@@ -1076,46 +1105,22 @@ async function openWhatsApp(
   if (!raw) return;
   const wa = raw.length === 10 ? `91${raw}` : raw;
 
-  const dateStr =
-    bucket === "today"
-      ? "today"
-      : bucket === "tomorrow"
-        ? "tomorrow"
-        : c.nextHearingDate
-          ? new Date(c.nextHearingDate).toLocaleDateString("en-IN", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })
-          : "the date communicated separately";
-
-  const venue =
-    [c.courtName, c.courtPlace].filter(Boolean).join(", ") ||
-    "the Hon'ble Court";
-  const office = officeName || "this office";
-  const matter = c.oppositeParty
-    ? `${c.clientName || "you"} vs ${c.oppositeParty}`
-    : c.caseNo;
-
-  const text = [
-    `Dear Mr./Ms. ${c.clientName || "Client"},`,
-    ``,
-    `Warm greetings from ${office}.`,
-    ``,
-    `This is to formally apprise you that the next hearing in your matter ${c.caseNo}` +
-      (c.oppositeParty ? ` (${matter})` : ``) +
-      ` is scheduled ${dateStr} before the ${venue}.`,
-    ``,
-    `You are kindly requested to ensure your presence on the said date and time, accompanied by all relevant documents previously discussed, so as to enable us to proceed with your matter without procedural complication.`,
-    ``,
-    `For any clarification or to revisit the brief prior to the hearing, please feel free to contact our office at your convenience.`,
-    ``,
-    `Thank you for your continued cooperation and trust.`,
-    ``,
-    `Regards,`,
-    office,
-  ].join("\n");
+  // The wording comes from the office's editable bilingual template, filled
+  // with this matter's details (My Profile → Pre-filled WhatsApp message).
+  const data: NoticeData = {
+    caseNo: c.caseNo || "",
+    clientName: c.clientName || "",
+    cnr: c.cnr || "",
+    fileNo: c.fileNo || "",
+    status: c.status || "",
+    oppositeParty: c.oppositeParty || "",
+    courtName: c.courtName || "",
+    courtPlace: c.courtPlace || "",
+    lastHearingDate: parseDateLocal(c.lastHearingDate),
+    nextHearingDate: parseDateLocal(c.nextHearingDate),
+    officeName: officeName || "",
+  };
+  const text = renderNotice(template, data);
 
   const native = `whatsapp://send?phone=${wa}&text=${encodeURIComponent(text)}`;
   const fallback = `https://wa.me/${wa}?text=${encodeURIComponent(text)}`;
