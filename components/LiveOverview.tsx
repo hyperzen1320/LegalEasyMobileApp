@@ -122,6 +122,7 @@ function ActivityRow({
   row: ActivityHistoryRow;
   onPress: () => void;
 }) {
+  const { action, file } = splitActivity(row.message);
   return (
     <Pressable
       onPress={onPress}
@@ -142,19 +143,24 @@ function ActivityRow({
             numberOfLines={1}
             maxFontSizeMultiplier={1.2}
           >
-            {cleanName(row.actorName)}
+            <Text style={styles.actorName}>{cleanName(row.actorName)}</Text>
+            {action ? (
+              <Text style={styles.actionText}>{` ${action}`}</Text>
+            ) : null}
           </Text>
           <Text style={styles.timeAgo} maxFontSizeMultiplier={1.1}>
             {timeAgo(row.createdAt)}
           </Text>
         </View>
-        <Text
-          style={styles.message}
-          numberOfLines={2}
-          maxFontSizeMultiplier={1.2}
-        >
-          {stripBoldMarkup(row.message)}
-        </Text>
+        {file ? (
+          <Text
+            style={styles.fileName}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.2}
+          >
+            {file}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -218,6 +224,20 @@ function initialsOf(name: string): string {
 
 function stripBoldMarkup(text: string): string {
   return text.replace(/\*\*(.+?)\*\*/g, "$1");
+}
+
+// Document activity messages read "<action> <filename>" (e.g. "removed
+// document report-2026.pdf"). Peel the trailing filename onto its own line so
+// it ellipsis-truncates instead of wrapping and bloating the row. Messages
+// with no trailing file token stay a single line.
+function splitActivity(message: string): {
+  action: string;
+  file: string | null;
+} {
+  const m = stripBoldMarkup(message).trim();
+  const match = m.match(/^(.*\S)\s+(\S+\.[A-Za-z0-9]{2,5})$/);
+  if (match) return { action: match[1], file: match[2] };
+  return { action: m, file: null };
 }
 
 function timeAgo(iso: string): string {
@@ -306,14 +326,15 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingHorizontal: 14,
     paddingVertical: 12,
+    minHeight: 72,
   },
   avatar: {
-    height: 34,
-    width: 34,
-    borderRadius: 17,
+    height: 40,
+    width: 40,
+    borderRadius: 20,
     backgroundColor: "#0a1124",
     alignItems: "center",
     justifyContent: "center",
@@ -333,21 +354,29 @@ const styles = StyleSheet.create({
   },
   rowTopLine: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   actor: {
     flex: 1,
+    marginRight: 8,
+  },
+  actorName: {
     fontFamily: "Manrope-SemiBold",
     fontSize: 13.5,
     color: "#0a1124",
-    marginRight: 8,
   },
-  message: {
+  actionText: {
     fontFamily: "Manrope",
-    fontSize: 12.5,
+    fontSize: 13,
     color: "#4d4538",
-    marginTop: 2,
-    lineHeight: 18,
+  },
+  fileName: {
+    fontFamily: "DMMono",
+    fontSize: 11.5,
+    color: "#7a7060",
+    marginTop: 3,
+    letterSpacing: 0.2,
   },
   timeAgo: {
     fontFamily: "DMMono",
@@ -359,7 +388,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: "#efe5d0",
-    marginLeft: 14 + 34 + 12,
+    marginLeft: 14 + 40 + 12,
   },
   skeletonBlock: {
     backgroundColor: "#efe5d0",
