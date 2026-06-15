@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import Sheet from "../Sheet";
+import ConfirmSheet from "../ConfirmSheet";
 import RequestDeleteSheet from "../workflow/RequestDeleteSheet";
 import AttachDocumentsSheet from "../files/AttachDocumentsSheet";
 import {
@@ -47,6 +48,9 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [requestTarget, setRequestTarget] =
     useState<DeleteRequestRequiredError | null>(null);
+  const [confirmDelDoc, setConfirmDelDoc] = useState<CaseDocumentDTO | null>(
+    null
+  );
   const [preview, setPreview] = useState<{
     doc: CaseDocumentDTO;
     file: DownloadedFile;
@@ -110,19 +114,10 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
 
   function confirmDelete() {
     if (!active || busy) return;
-    const doc = active;
-    Alert.alert(
-      "Remove this document?",
-      `“${doc.filename}” will be removed from the case file.`,
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: () => void doDelete(doc),
-        },
-      ]
-    );
+    // Hand the actions sheet over to the custom confirm sheet.
+    setActionError(null);
+    setConfirmDelDoc(active);
+    setActive(null);
   }
 
   async function doDelete(doc: CaseDocumentDTO) {
@@ -131,12 +126,12 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
     try {
       await partnerDeleteCaseDocument(caseId, doc.id);
       cacheRef.current.delete(doc.id);
-      setActive(null);
+      setConfirmDelDoc(null);
       await load();
     } catch (err) {
       const reqd = deleteRequestRequired(err);
       if (reqd) {
-        setActive(null);
+        setConfirmDelDoc(null);
         setRequestTarget(reqd);
       } else {
         setActionError(
@@ -377,6 +372,24 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
           setRequestTarget(null);
           Alert.alert("Sent for review", "The office admin has been notified.");
         }}
+      />
+
+      <ConfirmSheet
+        visible={confirmDelDoc !== null}
+        onClose={() => {
+          setConfirmDelDoc(null);
+          setActionError(null);
+        }}
+        onConfirm={() => {
+          if (confirmDelDoc) void doDelete(confirmDelDoc);
+        }}
+        busy={busy === "delete"}
+        error={actionError}
+        title="Remove this document?"
+        message={`“${
+          confirmDelDoc?.filename ?? "This document"
+        }” will be removed from the case file. This can't be undone.`}
+        confirmLabel="Remove"
       />
 
       {/* Full-screen image preview */}
