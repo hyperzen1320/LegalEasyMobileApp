@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     minHeight: 72,
   },
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: "#efe5d0",
-    marginLeft: 14 + 40 + 12,
+    marginLeft: 18 + 40 + 12,
   },
   skeletonBlock: {
     backgroundColor: "#efe5d0",
