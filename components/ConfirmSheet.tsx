@@ -15,6 +15,7 @@ export default function ConfirmSheet({
   message,
   confirmLabel = "Delete",
   busy = false,
+  error = null,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -23,6 +24,9 @@ export default function ConfirmSheet({
   message: string;
   confirmLabel?: string;
   busy?: boolean;
+  // Optional inline failure (e.g. the delete call errored) shown above the
+  // actions so the sheet can stay open for a retry.
+  error?: string | null;
 }) {
   return (
     <Sheet
@@ -46,6 +50,20 @@ export default function ConfirmSheet({
             {message}
           </Text>
         </View>
+
+        {error ? (
+          <View
+            className="mt-4 rounded-md px-3.5 py-2.5"
+            style={{ backgroundColor: "#f6dccd" }}
+          >
+            <Text
+              className="text-[12.5px]"
+              style={{ fontFamily: "Manrope", color: "#c14a37" }}
+            >
+              {error}
+            </Text>
+          </View>
+        ) : null}
 
         <View className="mt-6 flex-row gap-3">
           <Pressable

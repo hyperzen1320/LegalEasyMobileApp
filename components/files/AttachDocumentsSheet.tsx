@@ -138,6 +138,7 @@ export default function AttachDocumentsSheet({
       containerStyle={{ maxHeight: "88%" }}
     >
       <ScrollView
+        style={{ flexShrink: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 14 }}
       >
@@ -272,11 +273,15 @@ export default function AttachDocumentsSheet({
           </View>
         ) : null}
 
-        {/* Upload */}
+      </ScrollView>
+
+      {/* Upload — pinned below the scroll area so it stays visible no matter
+          how many files are staged (the list scrolls, the button doesn't). */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
         <Pressable
           onPress={upload}
           disabled={uploading || staged.length === 0}
-          className="mt-5 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+          className="rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
           style={{
             backgroundColor: staged.length === 0 ? "#c4baa3" : "#0a1124",
             paddingVertical: 14,
@@ -313,8 +318,7 @@ export default function AttachDocumentsSheet({
             </>
           )}
         </Pressable>
-        <View style={{ height: 16 }} />
-      </ScrollView>
+      </View>
     </Sheet>
   );
 }
