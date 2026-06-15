@@ -541,6 +541,18 @@ export async function partnerBulkDeleteCases(
   });
 }
 
+// Bulk restore (reopen) for the Disposed archive — office-admin only
+// (server-enforced). Each id is brought back into the live vault with status
+// "Filed"; disposed matters keep their CNR locked, so restoring never collides.
+export async function partnerBulkRestoreCases(
+  payload: { ids: string[] }
+): Promise<{ ok: true; restored: number; skipped: number }> {
+  return api("/api/app/cases/bulk-restore", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /* ─── Office WhatsApp notice template ─── */
 
 // Any user can read the office's notice template (their WhatsApp button uses

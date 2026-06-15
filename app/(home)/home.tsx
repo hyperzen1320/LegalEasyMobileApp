@@ -357,20 +357,6 @@ function StatsGrid({
       href: "/(home)/hearings?bucket=tomorrow",
     },
     {
-      label: "Pending",
-      value: stats?.pendingDates ?? 0,
-      variant: "copper",
-      icon: "alert-triangle",
-      href: "/(home)/hearings?bucket=pending",
-    },
-    {
-      label: "Case Vault",
-      value: stats?.caseVault ?? 0,
-      variant: "paper",
-      icon: "briefcase",
-      href: "/(home)/cases",
-    },
-    {
       label: "Work Flow",
       value: boardCount,
       variant: "ink",
@@ -383,6 +369,20 @@ function StatsGrid({
       variant: "paper",
       icon: "message-square",
       href: "/(home)/senior-desk",
+    },
+    {
+      label: "Pending",
+      value: stats?.pendingDates ?? 0,
+      variant: "copper",
+      icon: "alert-triangle",
+      href: "/(home)/hearings?bucket=pending",
+    },
+    {
+      label: "Case Vault",
+      value: stats?.caseVault ?? 0,
+      variant: "paper",
+      icon: "briefcase",
+      href: "/(home)/cases",
     },
   ];
 

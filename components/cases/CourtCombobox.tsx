@@ -11,7 +11,11 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { partnerListCourts, type PartnerCourt } from "../../lib/api";
+import {
+  partnerListCourts,
+  partnerCreateCourt,
+  type PartnerCourt,
+} from "../../lib/api";
 
 // Typeable court picker — mirrors the web CourtCombobox. Tapping the field
 // opens a sheet listing the office's courts (name, place · number, matter
@@ -40,6 +44,7 @@ export default function CourtCombobox({
   const [courts, setCourts] = useState<PartnerCourt[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   // Lazy-load the office's courts the first time the sheet opens.
   useEffect(() => {
@@ -83,10 +88,26 @@ export default function CourtCombobox({
     setQuery("");
     setOpen(false);
   }
-  function useCustom(v: string) {
-    onChange(v);
-    setQuery("");
-    setOpen(false);
+  async function useCustom(v: string) {
+    const name = v.trim();
+    if (!name || creating) return;
+    setCreating(true);
+    try {
+      // Persist the new court to Court Hub so it's reusable everywhere and
+      // actually appears there — then select it on this case. (Previously
+      // this only carried the free text, so the court never got saved.)
+      const { court } = await partnerCreateCourt({ name });
+      setCourts((prev) => [court, ...prev]);
+      onChange(court.name, court.place || undefined);
+    } catch {
+      // Couldn't persist (offline / server) — still carry the typed name on
+      // the case so the user isn't blocked.
+      onChange(name);
+    } finally {
+      setCreating(false);
+      setQuery("");
+      setOpen(false);
+    }
   }
 
   return (
@@ -182,13 +203,19 @@ export default function CourtCombobox({
                 {canUseCustom ? (
                   <Pressable
                     onPress={() => useCustom(trimmed)}
+                    disabled={creating}
                     className="flex-row items-center gap-2 py-3.5 active:opacity-50"
                     style={{
                       borderBottomWidth: 1,
                       borderBottomColor: "#efe5d0",
+                      opacity: creating ? 0.6 : 1,
                     }}
                   >
-                    <Feather name="plus" size={15} color="#c5853a" />
+                    {creating ? (
+                      <ActivityIndicator size="small" color="#c5853a" />
+                    ) : (
+                      <Feather name="plus" size={15} color="#c5853a" />
+                    )}
                     <Text
                       style={{
                         fontFamily: "Manrope-SemiBold",
@@ -196,7 +223,9 @@ export default function CourtCombobox({
                         color: "#0a1124",
                       }}
                     >
-                      Use “{trimmed}”
+                      {creating
+                        ? "Adding to Court Hub…"
+                        : `Add “${trimmed}” to Court Hub`}
                     </Text>
                   </Pressable>
                 ) : null}
