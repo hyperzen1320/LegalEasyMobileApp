@@ -6,6 +6,8 @@ import {
   Text,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
@@ -88,7 +90,12 @@ export default function StatusCombobox({
         transparent
         animationType="fade"
         onRequestClose={() => setOpen(false)}
+        statusBarTranslucent
       >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
         <Pressable
           onPress={() => setOpen(false)}
           className="flex-1"
@@ -193,6 +200,7 @@ export default function StatusCombobox({
             </ScrollView>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

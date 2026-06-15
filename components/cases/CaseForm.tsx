@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import KeyboardAwareScreen from "../KeyboardAwareScreen";
 import { Field, SheetField, DateField } from "../CaseFields";
 import StatusCombobox from "./StatusCombobox";
+import CourtCombobox from "./CourtCombobox";
 import type { PartnerCaseInput } from "../../lib/api";
 
 // Shared case form — backs both "Add a Case" (new) and "Edit Case". The owning
@@ -249,16 +250,17 @@ export default function CaseForm({
       </Card>
 
       <Card>
-        <Field
+        <CourtCombobox
           label="Court"
           required
           value={courtName}
-          onChangeText={(v) => {
-            setCourtName(v);
+          onChange={(name, place) => {
+            setCourtName(name);
             clearMissing("courtName");
+            // Picking a listed court fills its place too (a hidden optional
+            // field) so the matter carries the right location automatically.
+            if (place) setCourtPlace(place);
           }}
-          placeholder="District Court, Chennai"
-          autoCapitalize="words"
           invalid={missing.has("courtName")}
         />
         <StatusCombobox label="Status" value={status} onChange={setStatus} />
