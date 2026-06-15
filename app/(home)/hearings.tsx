@@ -27,7 +27,8 @@ import {
   parseDateLocal,
   type NoticeData,
 } from "../../lib/notice-template";
-import { DateField, SheetField } from "../../components/CaseFields";
+import { DateField } from "../../components/CaseFields";
+import StatusCombobox from "../../components/cases/StatusCombobox";
 import Sheet from "../../components/Sheet";
 import { useAuth } from "../../lib/auth-context";
 import ExportSheet from "../../components/ExportSheet";
@@ -446,11 +447,12 @@ function UpdateHearingSheet({
 
         <DateField label="Next hearing date" value={date} onChange={setDate} />
         <View className="mt-3">
-          <SheetField
+          <StatusCombobox
             label="Status"
             value={status}
             options={STATUS_OPTIONS}
             onChange={setStatus}
+            multiline
           />
         </View>
         <Text
@@ -881,11 +883,12 @@ function PendingCard({
           value={date}
           onChange={setDate}
         />
-        <SheetField
+        <StatusCombobox
           label="Status"
           value={status}
           options={STATUS_OPTIONS}
           onChange={setStatus}
+          multiline
         />
         {error ? (
           <Text
