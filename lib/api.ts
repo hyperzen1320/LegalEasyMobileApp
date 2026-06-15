@@ -527,6 +527,20 @@ export async function partnerDeleteCase(
   return api(`/api/app/cases/${id}`, { method: "DELETE" });
 }
 
+// Permanent bulk delete — office-admin only (server-enforced). Pass an
+// explicit id list, or { all: true } with the current filters to delete
+// every active matter matching them (the "select all N matching" path that
+// spans pages). A deleted matter frees its CNR for re-use, exactly like a
+// single delete.
+export async function partnerBulkDeleteCases(
+  payload: { ids: string[] } | { all: true; filters?: CaseListFilters }
+): Promise<{ ok: true; deleted: number }> {
+  return api("/api/app/cases/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /* ─── Office WhatsApp notice template ─── */
 
 // Any user can read the office's notice template (their WhatsApp button uses

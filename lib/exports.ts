@@ -107,18 +107,26 @@ function dateSlug(): string {
   return `${d.getFullYear()}${mm}${dd}`;
 }
 
-/** POST /api/app/cases/export — office-admin only (server-enforced). */
+/** POST /api/app/cases/export — office-admin only (server-enforced). When
+ *  `selectedIds` is non-empty the server exports exactly those rows and
+ *  ignores the filter query (the Case Vault's "export selected" path). */
 export async function exportCases(
   format: ExportFormat,
-  opts?: { filters?: CaseExportFilters; columns?: string[] | null }
+  opts?: {
+    filters?: CaseExportFilters;
+    columns?: string[] | null;
+    selectedIds?: string[];
+  }
 ): Promise<DownloadedFile> {
   const disposed = opts?.filters?.scope === "disposed";
+  const hasSelection = Boolean(opts?.selectedIds && opts.selectedIds.length > 0);
   return downloadAuthorized("/api/app/cases/export", {
     method: "POST",
     body: {
       format,
       filters: opts?.filters ?? {},
       columns: opts?.columns ?? undefined,
+      ...(hasSelection ? { selectedIds: opts!.selectedIds } : {}),
     },
     fallbackName: `${disposed ? "disposed-cases" : "case-report"}-${dateSlug()}.${format}`,
     mime: mimeForFormat(format),

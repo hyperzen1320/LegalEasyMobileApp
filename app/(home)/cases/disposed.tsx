@@ -18,10 +18,12 @@ import {
   ApiError,
   partnerListDisposedCases,
   partnerUpdateCase,
+  partnerDeleteCase,
   type DisposedCase,
 } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import ExportSheet from "../../../components/ExportSheet";
+import ConfirmSheet from "../../../components/ConfirmSheet";
 import {
   CASE_EXPORT_COLUMNS,
   DISPOSED_EXPORT_DEFAULT_KEYS,
@@ -43,6 +45,10 @@ export default function DisposedCases() {
   const [query, setQuery] = useState("");
   const [exporting, setExporting] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
+  // A disposed matter keeps its CNR locked while it sits here; deleting it
+  // removes it from the database for good and frees the CNR for re-use.
+  const [deleteTarget, setDeleteTarget] = useState<DisposedCase | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -110,6 +116,23 @@ export default function DisposedCases() {
       );
     } finally {
       setReopeningId(null);
+    }
+  }
+
+  async function runDelete() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await partnerDeleteCase(deleteTarget.id);
+      setCases((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      Alert.alert(
+        "Couldn't delete",
+        err instanceof ApiError ? err.message : "Try again."
+      );
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -221,6 +244,7 @@ export default function DisposedCases() {
                   c={item}
                   reopening={reopeningId === item.id}
                   onReopen={isPartnerAdmin ? () => confirmReopen(item) : null}
+                  onDelete={isPartnerAdmin ? () => setDeleteTarget(item) : null}
                   onOpen={() =>
                     router.push(`/(home)/cases/${item.id}` as never)
                   }
@@ -280,6 +304,18 @@ export default function DisposedCases() {
           })
         }
       />
+
+      <ConfirmSheet
+        visible={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={runDelete}
+        busy={deleteBusy}
+        title="Delete this matter?"
+        message={`${
+          deleteTarget?.caseNo ?? "This matter"
+        } leaves the archive and the database for good, freeing its CNR for re-use. This can't be undone.`}
+        confirmLabel="Delete"
+      />
     </View>
   );
 }
@@ -292,11 +328,13 @@ function DisposedRow({
   c,
   reopening,
   onReopen,
+  onDelete,
   onOpen,
 }: {
   c: DisposedCase;
   reopening: boolean;
   onReopen: (() => void) | null;
+  onDelete: (() => void) | null;
   onOpen: () => void;
 }) {
   const disposedOn = c.disposedAt
@@ -392,7 +430,7 @@ function DisposedRow({
         </Text>
       ) : null}
 
-      {onReopen ? (
+      {onReopen || onDelete ? (
         <View className="mt-3 pt-3 border-t border-app-edge-soft flex-row items-center justify-between">
           <Text
             className="text-[10px] uppercase text-app-fg-muted"
@@ -400,27 +438,50 @@ function DisposedRow({
           >
             {c.status}
           </Text>
-          <Pressable
-            onPress={onReopen}
-            disabled={reopening}
-            hitSlop={6}
-            className="flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5 active:opacity-80"
-            style={{ backgroundColor: "#efe5d0" }}
-            accessibilityRole="button"
-            accessibilityLabel={`Reopen ${c.caseNo}`}
-          >
-            {reopening ? (
-              <ActivityIndicator size="small" color="#8a5821" />
-            ) : (
-              <Feather name="rotate-ccw" size={12} color="#8a5821" />
-            )}
-            <Text
-              className="text-[11px]"
-              style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
-            >
-              Reopen
-            </Text>
-          </Pressable>
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            {onDelete ? (
+              <Pressable
+                onPress={onDelete}
+                disabled={reopening}
+                hitSlop={6}
+                className="flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5 active:opacity-80"
+                style={{ backgroundColor: "#f6dccd" }}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${c.caseNo} permanently`}
+              >
+                <Feather name="trash-2" size={12} color="#c14a37" />
+                <Text
+                  className="text-[11px]"
+                  style={{ fontFamily: "Manrope-SemiBold", color: "#c14a37" }}
+                >
+                  Delete
+                </Text>
+              </Pressable>
+            ) : null}
+            {onReopen ? (
+              <Pressable
+                onPress={onReopen}
+                disabled={reopening}
+                hitSlop={6}
+                className="flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5 active:opacity-80"
+                style={{ backgroundColor: "#efe5d0" }}
+                accessibilityRole="button"
+                accessibilityLabel={`Reopen ${c.caseNo}`}
+              >
+                {reopening ? (
+                  <ActivityIndicator size="small" color="#8a5821" />
+                ) : (
+                  <Feather name="rotate-ccw" size={12} color="#8a5821" />
+                )}
+                <Text
+                  className="text-[11px]"
+                  style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+                >
+                  Reopen
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       ) : null}
     </Pressable>
