@@ -6,10 +6,10 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import Svg, { Line, Path, Circle, G } from "react-native-svg";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -244,22 +244,16 @@ function Hero({
         elevation: 6,
       }}
     >
-      {/* decorative scales SVG, low opacity */}
+      {/* Brand mark, top-right corner */}
       <View
         pointerEvents="none"
-        style={{ position: "absolute", right: -30, top: -30, opacity: 0.18 }}
+        style={{ position: "absolute", right: 6, top: 10, opacity: 0.9 }}
       >
-        <Svg width={200} height={200} viewBox="0 0 200 200" fill="none">
-          <G stroke="#c5853a" strokeWidth={0.6} fill="none">
-            <Line x1="100" y1="30" x2="100" y2="160" />
-            <Line x1="60" y1="160" x2="140" y2="160" strokeWidth={1} />
-            <Line x1="40" y1="65" x2="160" y2="65" strokeWidth={0.8} />
-            <Path d="M55 65 L40 110 a5 5 0 0 0 30 0 L55 65 Z" />
-            <Path d="M145 65 L130 110 a5 5 0 0 0 30 0 L145 65 Z" />
-            <Circle cx="100" cy="30" r={2.5} fill="#c5853a" fillOpacity={0.4} />
-            <Circle cx="100" cy="100" r={80} strokeOpacity={0.2} />
-          </G>
-        </Svg>
+        <Image
+          source={require("../../assets/logo.png")}
+          style={{ width: 58, height: 120 }}
+          resizeMode="contain"
+        />
       </View>
 
       <Text
