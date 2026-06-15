@@ -687,10 +687,11 @@ function TopBar({
   onSelect?: (() => void) | null;
 }) {
   const router = useRouter();
-  const onArchive = () => router.push("/(home)/cases/disposed" as never);
   return (
-    <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center justify-between">
-      <View>
+    <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center">
+      {/* Title shrinks first so the action buttons never get clipped on
+          narrow phones (Disposed lives in the More tab now). */}
+      <View className="flex-1 min-w-0 pr-2">
         <Text
           className="text-[10px] uppercase text-app-copper-deep"
           style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
@@ -701,6 +702,7 @@ function TopBar({
           <Text
             className="text-[18px] font-semibold tracking-tight text-app-ink leading-none"
             style={{ fontFamily: "Crimson-SemiBold" }}
+            numberOfLines={1}
           >
             Case Vault
           </Text>
@@ -714,97 +716,82 @@ function TopBar({
           ) : null}
         </View>
       </View>
-      <Pressable
-        onPress={onArchive}
-        hitSlop={6}
-        className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
-        style={{
-          height: 36,
-          width: 36,
-          backgroundColor: "#ffffff",
-          borderWidth: 1,
-          borderColor: "#e3d9c0",
-          marginLeft: "auto",
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Disposed cases archive"
-      >
-        <Feather name="archive" size={15} color="#8a5821" />
-      </Pressable>
-      {onImport ? (
+      <View className="flex-row items-center" style={{ gap: 8 }}>
+        {onImport ? (
+          <Pressable
+            onPress={onImport}
+            hitSlop={6}
+            className="rounded-md items-center justify-center active:opacity-70"
+            style={{
+              height: 36,
+              width: 36,
+              backgroundColor: "#ffffff",
+              borderWidth: 1,
+              borderColor: "#e3d9c0",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Import cases from CSV"
+          >
+            <Feather name="upload" size={15} color="#8a5821" />
+          </Pressable>
+        ) : null}
+        {onExport ? (
+          <Pressable
+            onPress={onExport}
+            hitSlop={6}
+            className="rounded-md items-center justify-center active:opacity-70"
+            style={{
+              height: 36,
+              width: 36,
+              backgroundColor: "#ffffff",
+              borderWidth: 1,
+              borderColor: "#e3d9c0",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Export case rolls"
+          >
+            <Feather name="download" size={15} color="#8a5821" />
+          </Pressable>
+        ) : null}
+        {onSelect ? (
+          <Pressable
+            onPress={onSelect}
+            hitSlop={6}
+            className="rounded-md items-center justify-center active:opacity-70"
+            style={{
+              height: 36,
+              width: 36,
+              backgroundColor: "#ffffff",
+              borderWidth: 1,
+              borderColor: "#e3d9c0",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Select matters for bulk actions"
+          >
+            <Feather name="check-square" size={15} color="#8a5821" />
+          </Pressable>
+        ) : null}
         <Pressable
-          onPress={onImport}
-          hitSlop={6}
-          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
+          onPress={() => router.push("/(home)/cases/new")}
+          className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
           style={{
-            height: 36,
-            width: 36,
-            backgroundColor: "#ffffff",
-            borderWidth: 1,
-            borderColor: "#e3d9c0",
+            backgroundColor: "#c5853a",
+            shadowColor: "#c5853a",
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 3,
           }}
-          accessibilityRole="button"
-          accessibilityLabel="Import cases from CSV"
         >
-          <Feather name="upload" size={15} color="#8a5821" />
+          <Feather name="plus" size={14} color="#2a1c08" />
+          <Text
+            className="text-[12px] font-semibold"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
+          >
+            New
+          </Text>
         </Pressable>
-      ) : null}
-      {onExport ? (
-        <Pressable
-          onPress={onExport}
-          hitSlop={6}
-          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
-          style={{
-            height: 36,
-            width: 36,
-            backgroundColor: "#ffffff",
-            borderWidth: 1,
-            borderColor: "#e3d9c0",
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Export case rolls"
-        >
-          <Feather name="download" size={15} color="#8a5821" />
-        </Pressable>
-      ) : null}
-      {onSelect ? (
-        <Pressable
-          onPress={onSelect}
-          hitSlop={6}
-          className="rounded-md items-center justify-center mr-2.5 active:opacity-70"
-          style={{
-            height: 36,
-            width: 36,
-            backgroundColor: "#ffffff",
-            borderWidth: 1,
-            borderColor: "#e3d9c0",
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Select matters for bulk actions"
-        >
-          <Feather name="check-square" size={15} color="#8a5821" />
-        </Pressable>
-      ) : null}
-      <Pressable
-        onPress={() => router.push("/(home)/cases/new")}
-        className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
-        style={{
-          backgroundColor: "#c5853a",
-          shadowColor: "#c5853a",
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 3,
-        }}
-      >
-        <Feather name="plus" size={14} color="#2a1c08" />
-        <Text
-          className="text-[12px] font-semibold"
-          style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
-        >
-          New Case
-        </Text>
-      </Pressable>
+      </View>
     </View>
   );
 }
