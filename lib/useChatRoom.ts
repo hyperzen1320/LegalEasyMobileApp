@@ -43,7 +43,10 @@ export function useChatRoom(roomId: string | null): State & {
   loadOlder: () => Promise<void>;
   markRead: () => Promise<void>;
   editMessage: (id: string, body: string) => Promise<boolean>;
-  deleteMessage: (id: string) => Promise<boolean>;
+  deleteMessage: (
+    id: string,
+    scope?: "me" | "everyone"
+  ) => Promise<boolean>;
   refresh: () => Promise<void>;
 } {
   const [messages, setMessages] = useState<ChatMessageDTO[]>([]);
@@ -265,20 +268,34 @@ export function useChatRoom(roomId: string | null): State & {
     []
   );
 
-  const deleteMessage = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      await partnerChatDeleteMessage(id);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, isDeleted: true, body: "" } : m))
-      );
-      return true;
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Couldn't delete the message."
-      );
-      return false;
-    }
-  }, []);
+  const deleteMessage = useCallback(
+    async (
+      id: string,
+      scope: "me" | "everyone" = "everyone"
+    ): Promise<boolean> => {
+      try {
+        await partnerChatDeleteMessage(id, scope);
+        if (scope === "me") {
+          // Hidden for me — drop it from my thread entirely.
+          setMessages((prev) => prev.filter((m) => m.id !== id));
+        } else {
+          // Tombstone for everyone — keep the row, blank the body.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === id ? { ...m, isDeleted: true, body: "" } : m
+            )
+          );
+        }
+        return true;
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : "Couldn't delete the message."
+        );
+        return false;
+      }
+    },
+    []
+  );
 
   return useMemo(
     () => ({

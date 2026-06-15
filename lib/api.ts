@@ -1609,9 +1609,12 @@ export async function partnerChatEditMessage(
 }
 
 export async function partnerChatDeleteMessage(
-  messageId: string
+  messageId: string,
+  scope: "me" | "everyone" = "everyone"
 ): Promise<{ ok: true }> {
-  return api(`/api/app/chat/messages/${messageId}`, { method: "DELETE" });
+  return api(`/api/app/chat/messages/${messageId}?scope=${scope}`, {
+    method: "DELETE",
+  });
 }
 
 // Marks the room read up to messageId (or the room's newest when omitted).

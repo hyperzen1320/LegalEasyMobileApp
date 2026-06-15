@@ -21,6 +21,7 @@ import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import Sheet from "../../../components/Sheet";
+import ConfirmSheet from "../../../components/ConfirmSheet";
 import { useChatRoom } from "../../../lib/useChatRoom";
 import { useChatUnread } from "../../../lib/chat-unread";
 import { useAuth } from "../../../lib/auth-context";
@@ -70,6 +71,7 @@ export default function ChatThread() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [attachSheet, setAttachSheet] = useState(false);
+  const [confirmDelId, setConfirmDelId] = useState<string | null>(null);
   const [authHeader, setAuthHeader] = useState<Record<string, string>>({});
   const focusedRef = useRef(false);
   const lastMarkedRef = useRef<string | null>(null);
@@ -498,20 +500,24 @@ export default function ChatThread() {
             {actionTarget && canModerate(actionTarget) ? (
               <SheetAction
                 icon="trash-2"
-                label="Delete"
+                label="Delete for everyone"
                 danger
                 onPress={() => {
                   const target = actionTarget;
                   setActionTarget(null);
-                  if (!target) return;
-                  Alert.alert("Delete this message?", undefined, [
-                    { text: "Keep it", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: () => void room.deleteMessage(target.id),
-                    },
-                  ]);
+                  if (target) setConfirmDelId(target.id);
+                }}
+              />
+            ) : null}
+            {actionTarget ? (
+              <SheetAction
+                icon="eye-off"
+                label="Delete for me"
+                danger
+                onPress={() => {
+                  const target = actionTarget;
+                  setActionTarget(null);
+                  if (target) void room.deleteMessage(target.id, "me");
                 }}
               />
             ) : null}
@@ -519,6 +525,19 @@ export default function ChatThread() {
           <View style={{ height: 16 }} />
         </View>
       </Sheet>
+
+      <ConfirmSheet
+        visible={confirmDelId !== null}
+        onClose={() => setConfirmDelId(null)}
+        onConfirm={() => {
+          const id = confirmDelId;
+          setConfirmDelId(null);
+          if (id) void room.deleteMessage(id, "everyone");
+        }}
+        title="Delete for everyone?"
+        message="This message will be removed for everyone in the chat. This can't be undone."
+        confirmLabel="Delete for everyone"
+      />
 
       {/* Attach source */}
       <Sheet
