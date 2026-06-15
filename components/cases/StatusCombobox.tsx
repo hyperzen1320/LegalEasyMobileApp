@@ -34,21 +34,28 @@ export default function StatusCombobox({
   value,
   onChange,
   options = DEFAULT_OPTIONS,
+  multiline = false,
 }: {
   label?: string;
   value: string;
   onChange: (v: string) => void;
   options?: string[];
+  // Hearing statuses are long free-text cause-list notes; multiline opens a
+  // tall editor pre-filled with the current value, with the stages kept as
+  // one-tap quick-picks below.
+  multiline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const trimmed = query.trim();
   const filtered = useMemo(() => {
+    // Long notes don't filter the stage quick-picks — they stay listed.
+    if (multiline) return options;
     const q = trimmed.toLowerCase();
     if (!q) return options;
     return options.filter((o) => o.toLowerCase().includes(q));
-  }, [trimmed, options]);
+  }, [multiline, trimmed, options]);
 
   const exact = options.some((o) => o.toLowerCase() === trimmed.toLowerCase());
   const canUseCustom = trimmed.length > 0 && !exact;
@@ -69,20 +76,28 @@ export default function StatusCombobox({
       </Text>
       <Pressable
         onPress={() => {
-          setQuery("");
+          setQuery(multiline ? value : "");
           setOpen(true);
         }}
-        className="mt-1.5 flex-row items-center justify-between rounded-md border bg-app-paper px-3.5 py-3 active:opacity-70"
-        style={{ borderColor: "#e3d9c0" }}
+        className="mt-1.5 flex-row justify-between gap-2 rounded-md border bg-app-paper px-3.5 py-3 active:opacity-70"
+        style={{
+          borderColor: "#e3d9c0",
+          alignItems: multiline ? "flex-start" : "center",
+        }}
       >
         <Text
-          className="text-[15px] text-app-ink"
-          style={{ fontFamily: "Manrope" }}
-          numberOfLines={1}
+          className="flex-1 text-[15px] text-app-ink"
+          style={{ fontFamily: "Manrope", lineHeight: multiline ? 20 : undefined }}
+          numberOfLines={multiline ? 4 : 1}
         >
           {value || "Set status"}
         </Text>
-        <Feather name="chevron-down" size={16} color="#8a5821" />
+        <Feather
+          name="chevron-down"
+          size={16}
+          color="#8a5821"
+          style={{ marginTop: multiline ? 2 : 0 }}
+        />
       </Pressable>
 
       <Modal
@@ -126,17 +141,33 @@ export default function StatusCombobox({
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Filed, Evidence… or type your own"
+              placeholder={
+                multiline
+                  ? "Type the status / next step…"
+                  : "Filed, Evidence… or type your own"
+              }
               placeholderTextColor="#a89c80"
               autoFocus
-              autoCapitalize="words"
+              autoCapitalize={multiline ? "sentences" : "words"}
               autoCorrect={false}
-              returnKeyType="done"
+              multiline={multiline}
+              returnKeyType={multiline ? "default" : "done"}
+              blurOnSubmit={!multiline}
               onSubmitEditing={() => {
-                if (trimmed) commit(trimmed);
+                if (!multiline && trimmed) commit(trimmed);
               }}
               className="rounded-md border bg-white px-3.5 py-3 text-[15px] text-app-ink"
-              style={{ fontFamily: "Manrope", borderColor: "#c5853a" }}
+              style={[
+                { fontFamily: "Manrope", borderColor: "#c5853a" },
+                multiline
+                  ? {
+                      minHeight: 104,
+                      maxHeight: 180,
+                      textAlignVertical: "top",
+                      lineHeight: 21,
+                    }
+                  : null,
+              ]}
             />
 
             <ScrollView
@@ -153,13 +184,15 @@ export default function StatusCombobox({
                 >
                   <Feather name="plus" size={15} color="#c5853a" />
                   <Text
+                    className="flex-1"
+                    numberOfLines={2}
                     style={{
                       fontFamily: "Manrope-SemiBold",
                       fontSize: 15,
                       color: "#0a1124",
                     }}
                   >
-                    Use “{trimmed}”
+                    {multiline ? "Use this status" : `Use “${trimmed}”`}
                   </Text>
                 </Pressable>
               ) : null}
