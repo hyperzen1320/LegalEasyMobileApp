@@ -5,6 +5,7 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { NOTICE_TOKENS } from "../lib/notice-template";
 import { partnerSaveNoticeTemplate } from "../lib/api";
@@ -32,6 +33,16 @@ export default function NoticeTemplateEditor({
     start: initialTemplate.length,
     end: initialTemplate.length,
   });
+  // Live mirror of the text so onSelectionChange (which fires right after
+  // onChangeText) can scan it for an active "@" mention without waiting on a
+  // re-render.
+  const templateRef = useRef(initialTemplate);
+  // When the caret sits just after an "@field" fragment, an inline picker of
+  // merge tokens opens above the box — so a typist never has to reach the
+  // chips the keyboard is covering.
+  const [mention, setMention] = useState<{ query: string; at: number } | null>(
+    null
+  );
 
   const dirty = template !== saved;
 
@@ -40,9 +51,36 @@ export default function NoticeTemplateEditor({
     const { start, end } = sel.current;
     const next = template.slice(0, start) + piece + template.slice(end);
     setTemplate(next);
+    templateRef.current = next;
     const pos = start + piece.length;
     sel.current = { start: pos, end: pos };
   }
+
+  // Replace the typed "@query" (from the @ up to the caret) with the token.
+  function insertMention(token: string) {
+    if (!mention) {
+      insertToken(token);
+      return;
+    }
+    const piece = `{{${token}}}`;
+    const start = mention.at;
+    const end = sel.current.start;
+    const next = template.slice(0, start) + piece + template.slice(end);
+    setTemplate(next);
+    templateRef.current = next;
+    const pos = start + piece.length;
+    sel.current = { start: pos, end: pos };
+    setMention(null);
+  }
+
+  const mentionMatches = mention
+    ? NOTICE_TOKENS.filter((t) => {
+        const q = mention.query.toLowerCase();
+        return (
+          t.label.toLowerCase().includes(q) || t.token.toLowerCase().includes(q)
+        );
+      })
+    : [];
 
   async function save() {
     setSaving(true);
@@ -92,7 +130,7 @@ export default function NoticeTemplateEditor({
           >
             This is what fills in when you tap WhatsApp on a hearing.
             {isAdmin
-              ? " Tap a field below to insert a detail like the case number or next date."
+              ? " Type @ or tap a field below to insert a detail like the case number or next date."
               : " Only the office admin can edit it."}
           </Text>
         </View>
@@ -112,11 +150,77 @@ export default function NoticeTemplateEditor({
 
       {isAdmin ? (
         <>
+          {mention ? (
+            <View
+              className="mt-4 rounded-md border bg-white overflow-hidden"
+              style={{ borderColor: "#c5853a", maxHeight: 220 }}
+            >
+              <Text
+                className="px-3 pt-2.5 pb-1 text-[9px] uppercase"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  letterSpacing: 1.4,
+                  color: "#8a5821",
+                }}
+              >
+                Insert a field
+              </Text>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {mentionMatches.map((t) => (
+                  <Pressable
+                    key={t.token}
+                    onPress={() => insertMention(t.token)}
+                    className="px-3 py-2.5 active:opacity-60"
+                    style={{ borderTopWidth: 1, borderTopColor: "#efe5d0" }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "Manrope-SemiBold",
+                        fontSize: 14,
+                        color: "#0a1124",
+                      }}
+                    >
+                      {t.label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "DMMono",
+                        fontSize: 11,
+                        color: "#a89c80",
+                        marginTop: 1,
+                      }}
+                    >
+                      {`{{${t.token}}}`}
+                    </Text>
+                  </Pressable>
+                ))}
+                {mentionMatches.length === 0 ? (
+                  <Text
+                    className="px-3 py-3"
+                    style={{
+                      fontFamily: "Manrope",
+                      fontSize: 13,
+                      color: "#a89c80",
+                    }}
+                  >
+                    No field matches “{mention.query}”.
+                  </Text>
+                ) : null}
+              </ScrollView>
+            </View>
+          ) : null}
           <TextInput
             value={template}
-            onChangeText={setTemplate}
+            onChangeText={(t) => {
+              setTemplate(t);
+              templateRef.current = t;
+            }}
             onSelectionChange={(e) => {
               sel.current = e.nativeEvent.selection;
+              const caret = e.nativeEvent.selection.start;
+              const upto = templateRef.current.slice(0, caret);
+              const m = /@(\w*)$/.exec(upto);
+              setMention(m ? { query: m[1], at: caret - m[0].length } : null);
             }}
             multiline
             textAlignVertical="top"

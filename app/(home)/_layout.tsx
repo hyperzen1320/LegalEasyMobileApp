@@ -57,8 +57,11 @@ export default function HomeLayout() {
           borderTopColor: "#1f2a45",
           borderTopWidth: 1,
           paddingTop: 6,
-          height: 58 + insets.bottom,
-          paddingBottom: Math.max(insets.bottom, 8),
+          // Older / smaller phones (no gesture pill → insets.bottom === 0)
+          // were clipping the labels; a taller floor + a 12px bottom-padding
+          // floor keeps all five fully visible everywhere.
+          height: 66 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 12),
         },
         // 9.5px + tight tracking keeps all five labels on one line on the
         // narrowest phones.
@@ -67,9 +70,9 @@ export default function HomeLayout() {
           fontFamily: "DMMono-Medium",
           letterSpacing: 0.6,
           textTransform: "uppercase",
-          marginTop: 4,
+          marginTop: 3,
         },
-        tabBarItemStyle: { paddingVertical: 4 },
+        tabBarItemStyle: { paddingVertical: 2 },
         sceneStyle: { backgroundColor: "#f4ede0" },
       }}
     >

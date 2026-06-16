@@ -19,6 +19,8 @@ import {
   partnerListDisposedCases,
   partnerUpdateCase,
   partnerDeleteCase,
+  partnerBulkDeleteCases,
+  partnerBulkRestoreCases,
   type DisposedCase,
 } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -49,6 +51,12 @@ export default function DisposedCases() {
   // removes it from the database for good and frees the CNR for re-use.
   const [deleteTarget, setDeleteTarget] = useState<DisposedCase | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Multi-select — admin bulk restore / permanent delete over the archive.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<null | "restore" | "delete">(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -136,6 +144,72 @@ export default function DisposedCases() {
     }
   }
 
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+  // FlashList recycles rows — feed it a signature so checkboxes repaint.
+  const selectionSig = selectMode
+    ? Array.from(selectedIds).sort().join(",")
+    : "";
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (filtered.length > 0 && filtered.every((c) => prev.has(c.id))) {
+        filtered.forEach((c) => next.delete(c.id));
+      } else {
+        filtered.forEach((c) => next.add(c.id));
+      }
+      return next;
+    });
+  }
+  function exitSelect() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function runBulkRestore() {
+    if (selectedIds.size === 0 || bulkBusy) return;
+    setBulkBusy("restore");
+    try {
+      await partnerBulkRestoreCases({ ids: Array.from(selectedIds) });
+      await load();
+      exitSelect();
+    } catch (err) {
+      Alert.alert(
+        "Couldn't restore",
+        err instanceof ApiError ? err.message : "Try again."
+      );
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function runBulkDelete() {
+    if (selectedIds.size === 0 || bulkBusy) return;
+    setBulkBusy("delete");
+    try {
+      await partnerBulkDeleteCases({ ids: Array.from(selectedIds) });
+      await load();
+      setConfirmBulkDelete(false);
+      exitSelect();
+    } catch (err) {
+      Alert.alert(
+        "Couldn't delete",
+        err instanceof ApiError ? err.message : "Try again."
+      );
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
   return (
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
@@ -176,22 +250,51 @@ export default function DisposedCases() {
             </View>
           </View>
           {isPartnerAdmin ? (
-            <Pressable
-              onPress={() => setExporting(true)}
-              hitSlop={6}
-              className="rounded-md items-center justify-center active:opacity-70"
-              style={{
-                height: 36,
-                width: 36,
-                backgroundColor: "#ffffff",
-                borderWidth: 1,
-                borderColor: "#e3d9c0",
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Export disposed cases"
-            >
-              <Feather name="download" size={15} color="#8a5821" />
-            </Pressable>
+            <>
+              <Pressable
+                onPress={() => (selectMode ? exitSelect() : setSelectMode(true))}
+                hitSlop={6}
+                className="rounded-md items-center justify-center active:opacity-70"
+                style={{
+                  height: 36,
+                  paddingHorizontal: 12,
+                  backgroundColor: selectMode ? "#0a1124" : "#ffffff",
+                  borderWidth: 1,
+                  borderColor: selectMode ? "#0a1124" : "#e3d9c0",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selectMode ? "Cancel selection" : "Select matters"
+                }
+              >
+                <Text
+                  className="text-[11px] uppercase"
+                  style={{
+                    fontFamily: "DMMono-Medium",
+                    letterSpacing: 1.2,
+                    color: selectMode ? "#f5ebd6" : "#8a5821",
+                  }}
+                >
+                  {selectMode ? "Cancel" : "Select"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setExporting(true)}
+                hitSlop={6}
+                className="rounded-md items-center justify-center active:opacity-70"
+                style={{
+                  height: 36,
+                  width: 36,
+                  backgroundColor: "#ffffff",
+                  borderWidth: 1,
+                  borderColor: "#e3d9c0",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Export disposed cases"
+              >
+                <Feather name="download" size={15} color="#8a5821" />
+              </Pressable>
+            </>
           ) : null}
         </View>
 
@@ -230,6 +333,90 @@ export default function DisposedCases() {
           </View>
         </View>
 
+        {selectMode ? (
+          <View
+            className="mx-5 mt-1 mb-1 flex-row items-center justify-between rounded-xl px-3.5 py-2.5"
+            style={{ backgroundColor: "#0a1124" }}
+          >
+            <Pressable
+              onPress={toggleSelectAll}
+              hitSlop={6}
+              className="flex-row items-center active:opacity-70"
+              style={{ gap: 8 }}
+            >
+              <View
+                className="h-5 w-5 items-center justify-center rounded-[5px] border"
+                style={{
+                  borderColor: allFilteredSelected ? "#c5853a" : "#5b6373",
+                  backgroundColor: allFilteredSelected
+                    ? "#c5853a"
+                    : "transparent",
+                }}
+              >
+                {allFilteredSelected ? (
+                  <Feather name="check" size={13} color="#2a1c08" />
+                ) : null}
+              </View>
+              <Text
+                className="text-[12px]"
+                style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+              >
+                {allFilteredSelected ? "Deselect all" : "Select all"}
+              </Text>
+              <Text
+                className="text-[11px] tabular-nums"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  color: "#ddb074",
+                  letterSpacing: 0.4,
+                }}
+              >
+                {selectedIds.size} selected
+              </Text>
+            </Pressable>
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <Pressable
+                onPress={runBulkRestore}
+                disabled={selectedIds.size === 0 || bulkBusy !== null}
+                className="flex-row items-center gap-1.5 rounded-md px-3 py-1.5 active:opacity-80"
+                style={{
+                  backgroundColor: "#efe5d0",
+                  opacity: selectedIds.size === 0 || bulkBusy ? 0.5 : 1,
+                }}
+              >
+                {bulkBusy === "restore" ? (
+                  <ActivityIndicator size="small" color="#8a5821" />
+                ) : (
+                  <Feather name="rotate-ccw" size={12} color="#8a5821" />
+                )}
+                <Text
+                  className="text-[11px]"
+                  style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+                >
+                  Restore
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setConfirmBulkDelete(true)}
+                disabled={selectedIds.size === 0 || bulkBusy !== null}
+                className="flex-row items-center gap-1.5 rounded-md px-3 py-1.5 active:opacity-80"
+                style={{
+                  backgroundColor: "#c14a37",
+                  opacity: selectedIds.size === 0 || bulkBusy ? 0.5 : 1,
+                }}
+              >
+                <Feather name="trash-2" size={12} color="#ffffff" />
+                <Text
+                  className="text-[11px]"
+                  style={{ fontFamily: "Manrope-SemiBold", color: "#ffffff" }}
+                >
+                  Delete
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         {loading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color="#c5853a" size="large" />
@@ -239,12 +426,24 @@ export default function DisposedCases() {
             <FlashList
               data={filtered}
               keyExtractor={(c) => c.id}
+              extraData={selectionSig}
               renderItem={({ item }) => (
                 <DisposedRow
                   c={item}
                   reopening={reopeningId === item.id}
-                  onReopen={isPartnerAdmin ? () => confirmReopen(item) : null}
-                  onDelete={isPartnerAdmin ? () => setDeleteTarget(item) : null}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(item.id)}
+                  onToggleSelect={() => toggleSelect(item.id)}
+                  onReopen={
+                    isPartnerAdmin && !selectMode
+                      ? () => confirmReopen(item)
+                      : null
+                  }
+                  onDelete={
+                    isPartnerAdmin && !selectMode
+                      ? () => setDeleteTarget(item)
+                      : null
+                  }
                   onOpen={() =>
                     router.push(`/(home)/cases/${item.id}` as never)
                   }
@@ -316,6 +515,22 @@ export default function DisposedCases() {
         } leaves the archive and the database for good, freeing its CNR for re-use. This can't be undone.`}
         confirmLabel="Delete"
       />
+
+      <ConfirmSheet
+        visible={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={runBulkDelete}
+        busy={bulkBusy === "delete"}
+        title={`Delete ${selectedIds.size} matter${
+          selectedIds.size === 1 ? "" : "s"
+        }?`}
+        message={`${selectedIds.size} archived ${
+          selectedIds.size === 1 ? "matter leaves" : "matters leave"
+        } the database for good, freeing ${
+          selectedIds.size === 1 ? "its CNR" : "their CNRs"
+        } for re-use. This can't be undone.`}
+        confirmLabel="Delete"
+      />
     </View>
   );
 }
@@ -330,12 +545,18 @@ function DisposedRow({
   onReopen,
   onDelete,
   onOpen,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   c: DisposedCase;
   reopening: boolean;
   onReopen: (() => void) | null;
   onDelete: (() => void) | null;
   onOpen: () => void;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const disposedOn = c.disposedAt
     ? new Date(c.disposedAt).toLocaleDateString("en-IN", {
@@ -348,20 +569,36 @@ function DisposedRow({
 
   return (
     <Pressable
-      onPress={onOpen}
-      className="rounded-xl bg-app-paper p-4 active:opacity-90"
+      onPress={selectMode ? onToggleSelect : onOpen}
+      className="rounded-xl p-4 active:opacity-90"
       style={{
+        backgroundColor: selected ? "#efe5d0" : "#faf6ee",
         shadowColor: "#0a1124",
         shadowOpacity: 0.05,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 1 },
         elevation: 1,
         borderLeftWidth: 3,
-        borderLeftColor: "#7e7763",
+        borderLeftColor: selected ? "#c5853a" : "#7e7763",
       }}
       accessibilityRole="button"
       accessibilityLabel={`Disposed case ${c.caseNo}`}
     >
+      <View className="flex-row" style={{ gap: 12 }}>
+        {selectMode ? (
+          <View
+            className="mt-0.5 h-5 w-5 items-center justify-center rounded-[5px] border"
+            style={{
+              borderColor: selected ? "#c5853a" : "#cfc4a8",
+              backgroundColor: selected ? "#c5853a" : "transparent",
+            }}
+          >
+            {selected ? (
+              <Feather name="check" size={13} color="#2a1c08" />
+            ) : null}
+          </View>
+        ) : null}
+        <View className="flex-1">
       <View className="flex-row items-baseline gap-2 flex-wrap">
         <Text
           className="text-[17px] tracking-tight text-app-ink"
@@ -484,6 +721,8 @@ function DisposedRow({
           </View>
         </View>
       ) : null}
+        </View>
+      </View>
     </Pressable>
   );
 }

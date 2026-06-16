@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, Pressable } from "react-native";
+import { ScrollView, View, Text, Pressable, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
@@ -68,6 +68,12 @@ export default function More() {
       description: "Office team & roles",
       icon: "user-plus",
       onPress: () => router.push("/(home)/users"),
+    },
+    {
+      label: "Nambiraj Law Dynasty",
+      description: "Visit our public site — legalezi.com",
+      icon: "external-link",
+      onPress: () => Linking.openURL("https://legalezi.com"),
     },
     // Office-admin desk — mirrors the web sidebar's admin-only items.
     ...(isPartnerAdmin
