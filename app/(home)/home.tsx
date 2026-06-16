@@ -243,7 +243,7 @@ function Hero({
   return (
     <Animated.View
       entering={FadeInDown.duration(700).springify().damping(14)}
-      className="relative overflow-hidden rounded-2xl px-6 py-7"
+      className="relative overflow-hidden rounded-2xl px-5 py-5"
       style={{
         backgroundColor: "#0a1124",
         shadowColor: "#0a1124",
@@ -256,11 +256,11 @@ function Hero({
       {/* Brand mark, top-right corner */}
       <View
         pointerEvents="none"
-        style={{ position: "absolute", right: 6, top: 10, opacity: 0.9 }}
+        style={{ position: "absolute", right: 4, top: 8, opacity: 0.85 }}
       >
         <Image
           source={require("../../assets/logo.png")}
-          style={{ width: 58, height: 120 }}
+          style={{ width: 40, height: 84 }}
           resizeMode="contain"
         />
       </View>
@@ -273,13 +273,13 @@ function Hero({
       </Text>
 
       <Text
-        className="mt-4 text-[36px] font-semibold leading-[1.04] tracking-tight text-app-ivory"
+        className="mt-3 text-[26px] font-semibold leading-[1.08] tracking-tight text-app-ivory"
         style={{ fontFamily: "Crimson-SemiBold" }}
       >
         {greeting},
       </Text>
       <Text
-        className="text-[36px] leading-[1.04] tracking-tight"
+        className="text-[26px] leading-[1.1] tracking-tight"
         style={{
           fontFamily: "Crimson-SemiBoldItalic",
           color: "#ddb074",
@@ -290,7 +290,7 @@ function Hero({
       </Text>
 
       <Text
-        className="mt-4 text-[14px] leading-[22px] text-app-ivory-soft"
+        className="mt-3 text-[13px] leading-[20px] text-app-ivory-soft"
         style={{ fontFamily: "Manrope" }}
       >
         {todayCount === 0 && pendingCount === 0 ? (
@@ -303,7 +303,7 @@ function Hero({
               style={{
                 fontFamily: "Crimson-SemiBold",
                 color: "#ddb074",
-                fontSize: 16,
+                fontSize: 14,
               }}
             >
               {todayCount}
@@ -317,7 +317,7 @@ function Hero({
                   style={{
                     fontFamily: "Crimson-SemiBold",
                     color: "#ddb074",
-                    fontSize: 16,
+                    fontSize: 14,
                   }}
                 >
                   {pendingCount}

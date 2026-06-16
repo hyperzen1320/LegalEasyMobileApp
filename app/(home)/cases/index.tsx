@@ -31,6 +31,7 @@ import CaseFilterSheet, {
   type CaseFilterLabels,
 } from "../../../components/cases/CaseFilterSheet";
 import CaseDetailView from "../../../components/cases/CaseDetailView";
+import CnrChip from "../../../components/CnrChip";
 import ImportCasesModal from "../../../components/cases/ImportCasesModal";
 import { useBreakpoint } from "../../../lib/useBreakpoint";
 import { formatDateForDisplay } from "../../../components/CaseFields";
@@ -1092,16 +1093,20 @@ function CaseCard({
         </Text>
       ) : null}
 
-      {/* Court + CNR */}
-      {(courtLine || c.cnr) ? (
+      {/* Court */}
+      {courtLine ? (
         <Text
           className="mt-1 text-[11px] text-app-fg-muted"
           style={{ fontFamily: "DMMono", letterSpacing: 0.3 }}
         >
           {courtLine}
-          {courtLine && c.cnr ? "  ·  " : ""}
-          {c.cnr ? `CNR ${c.cnr}` : ""}
         </Text>
+      ) : null}
+      {/* CNR — tap to copy + open eCourts */}
+      {c.cnr ? (
+        <View className="mt-1.5">
+          <CnrChip cnr={c.cnr} />
+        </View>
       ) : null}
 
       {/* Footer — next date + chevron */}

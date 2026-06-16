@@ -22,6 +22,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import Sheet from "../../../components/Sheet";
 import ConfirmSheet from "../../../components/ConfirmSheet";
+import ImageViewerModal from "../../../components/ImageViewerModal";
 import { useChatRoom } from "../../../lib/useChatRoom";
 import { useChatUnread } from "../../../lib/chat-unread";
 import { useAuth } from "../../../lib/auth-context";
@@ -793,6 +794,7 @@ function AttachmentView({
   authHeader: Record<string, string>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const url = `${base}/api/app/chat/attachments/${att.id}`;
   const image = isImageAtt(att);
 
@@ -822,37 +824,48 @@ function AttachmentView({
 
   if (image) {
     return (
-      <Pressable
-        onPress={open}
-        className="overflow-hidden rounded-lg active:opacity-85"
-      >
-        <Image
-          source={{ uri: url, headers: authHeader }}
-          style={{
-            width: 210,
-            height: 158,
-            borderRadius: 8,
-            backgroundColor: "rgba(10,17,36,0.08)",
-          }}
-          resizeMode="cover"
-        />
-        {busy ? (
-          <View
+      <>
+        <Pressable
+          onPress={() => setViewerOpen(true)}
+          className="overflow-hidden rounded-lg active:opacity-85"
+        >
+          <Image
+            source={{ uri: url, headers: authHeader }}
             style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(10,17,36,0.25)",
+              width: 210,
+              height: 158,
+              borderRadius: 8,
+              backgroundColor: "rgba(10,17,36,0.08)",
             }}
-          >
-            <ActivityIndicator color="#f5ebd6" />
-          </View>
-        ) : null}
-      </Pressable>
+            resizeMode="cover"
+          />
+          {busy ? (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(10,17,36,0.25)",
+              }}
+            >
+              <ActivityIndicator color="#f5ebd6" />
+            </View>
+          ) : null}
+        </Pressable>
+        <ImageViewerModal
+          visible={viewerOpen}
+          uri={url}
+          headers={authHeader}
+          filename={att.filename}
+          busy={busy}
+          onClose={() => setViewerOpen(false)}
+          onShare={open}
+        />
+      </>
     );
   }
 
