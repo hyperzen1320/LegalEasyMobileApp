@@ -335,34 +335,39 @@ export default function DisposedCases() {
 
         {selectMode ? (
           <View
-            className="mx-5 mt-1 mb-1 flex-row items-center justify-between rounded-xl px-3.5 py-2.5"
-            style={{ backgroundColor: "#0a1124" }}
+            className="mx-5 mt-1 mb-1 rounded-xl px-3.5 py-3"
+            style={{ backgroundColor: "#0a1124", gap: 11 }}
           >
-            <Pressable
-              onPress={toggleSelectAll}
-              hitSlop={6}
-              className="flex-row items-center active:opacity-70"
-              style={{ gap: 8 }}
-            >
-              <View
-                className="h-5 w-5 items-center justify-center rounded-[5px] border"
-                style={{
-                  borderColor: allFilteredSelected ? "#c5853a" : "#5b6373",
-                  backgroundColor: allFilteredSelected
-                    ? "#c5853a"
-                    : "transparent",
-                }}
+            {/* Tier 1 — select-all toggle + live count. Splitting the bar in
+                two means the action buttons below always have the full width,
+                so Delete can never run off the right edge. */}
+            <View className="flex-row items-center justify-between">
+              <Pressable
+                onPress={toggleSelectAll}
+                hitSlop={8}
+                className="flex-row items-center active:opacity-70"
+                style={{ gap: 9 }}
               >
-                {allFilteredSelected ? (
-                  <Feather name="check" size={13} color="#2a1c08" />
-                ) : null}
-              </View>
-              <Text
-                className="text-[12px]"
-                style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
-              >
-                {allFilteredSelected ? "Deselect all" : "Select all"}
-              </Text>
+                <View
+                  className="h-5 w-5 items-center justify-center rounded-[5px] border"
+                  style={{
+                    borderColor: allFilteredSelected ? "#c5853a" : "#5b6373",
+                    backgroundColor: allFilteredSelected
+                      ? "#c5853a"
+                      : "transparent",
+                  }}
+                >
+                  {allFilteredSelected ? (
+                    <Feather name="check" size={13} color="#2a1c08" />
+                  ) : null}
+                </View>
+                <Text
+                  className="text-[12px]"
+                  style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+                >
+                  {allFilteredSelected ? "Deselect all" : "Select all"}
+                </Text>
+              </Pressable>
               <Text
                 className="text-[11px] tabular-nums"
                 style={{
@@ -373,12 +378,13 @@ export default function DisposedCases() {
               >
                 {selectedIds.size} selected
               </Text>
-            </Pressable>
-            <View className="flex-row items-center" style={{ gap: 8 }}>
+            </View>
+            {/* Tier 2 — actions share the row width evenly */}
+            <View className="flex-row" style={{ gap: 10 }}>
               <Pressable
                 onPress={runBulkRestore}
                 disabled={selectedIds.size === 0 || bulkBusy !== null}
-                className="flex-row items-center gap-1.5 rounded-md px-3 py-1.5 active:opacity-80"
+                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg py-2.5 active:opacity-80"
                 style={{
                   backgroundColor: "#efe5d0",
                   opacity: selectedIds.size === 0 || bulkBusy ? 0.5 : 1,
@@ -387,10 +393,10 @@ export default function DisposedCases() {
                 {bulkBusy === "restore" ? (
                   <ActivityIndicator size="small" color="#8a5821" />
                 ) : (
-                  <Feather name="rotate-ccw" size={12} color="#8a5821" />
+                  <Feather name="rotate-ccw" size={13} color="#8a5821" />
                 )}
                 <Text
-                  className="text-[11px]"
+                  className="text-[12px]"
                   style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
                 >
                   Restore
@@ -399,15 +405,15 @@ export default function DisposedCases() {
               <Pressable
                 onPress={() => setConfirmBulkDelete(true)}
                 disabled={selectedIds.size === 0 || bulkBusy !== null}
-                className="flex-row items-center gap-1.5 rounded-md px-3 py-1.5 active:opacity-80"
+                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg py-2.5 active:opacity-80"
                 style={{
                   backgroundColor: "#c14a37",
                   opacity: selectedIds.size === 0 || bulkBusy ? 0.5 : 1,
                 }}
               >
-                <Feather name="trash-2" size={12} color="#ffffff" />
+                <Feather name="trash-2" size={13} color="#ffffff" />
                 <Text
-                  className="text-[11px]"
+                  className="text-[12px]"
                   style={{ fontFamily: "Manrope-SemiBold", color: "#ffffff" }}
                 >
                   Delete

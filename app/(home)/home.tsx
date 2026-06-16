@@ -111,7 +111,7 @@ export default function PartnerHome() {
           ) : null}
 
           <Hero
-            firstName={user?.firstName ?? "Counsel"}
+            name={fullNameOf(user?.firstName, user?.lastName)}
             stats={data?.stats}
           />
 
@@ -203,12 +203,21 @@ function TopBar({
   );
 }
 
+// Greeting shows the advocate's full name (first + last); a stray placeholder
+// last name like "—" is dropped so it never reads "Tejas —".
+function fullNameOf(first?: string, last?: string): string {
+  const f = (first ?? "").trim();
+  const l = (last ?? "").trim();
+  const cleanLast = /^[\s.\-–—_]*$/.test(l) ? "" : l;
+  return [f, cleanLast].filter(Boolean).join(" ") || "Counsel";
+}
+
 /* ───────── Hero greeting card ───────── */
 function Hero({
-  firstName,
+  name,
   stats,
 }: {
-  firstName: string;
+  name: string;
   stats?: PartnerDashboardData["stats"];
 }) {
   const hour = new Date().getHours();
@@ -277,7 +286,7 @@ function Hero({
           fontStyle: "italic",
         }}
       >
-        {firstName}.
+        {name}.
       </Text>
 
       <Text
