@@ -3,6 +3,7 @@ import {
   ScrollView,
   View,
   Text,
+  TextInput,
   Pressable,
   ActivityIndicator,
   RefreshControl,
@@ -392,14 +393,18 @@ function UpdateHearingSheet({
   onSaved: () => void;
 }) {
   const [date, setDate] = useState("");
-  const [status, setStatus] = useState("Filed");
+  const [status, setStatus] = useState("");
+  const [disposalRemarks, setDisposalRemarks] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (item) {
       setDate(item.nextHearingDate ? item.nextHearingDate.slice(0, 10) : "");
-      setStatus(item.status || "Filed");
+      // Status starts blank — set consciously; left blank, the stored status is
+      // kept. The disposal note opens only when the status is "Disposed".
+      setStatus("");
+      setDisposalRemarks("");
       setError(null);
       setSaving(false);
     }
@@ -410,11 +415,20 @@ function UpdateHearingSheet({
     setSaving(true);
     setError(null);
     try {
-      await partnerUpdateCase(item.id, {
+      const payload: {
+        nextHearingDate: string | null;
+        status?: string;
+        disposalRemarks?: string;
+      } = {
         // Clearing the date is allowed — the matter moves to Pending.
         nextHearingDate: date || null,
-        status,
-      });
+      };
+      // Blank status keeps whatever's on record; a typed status applies.
+      if (status.trim()) payload.status = status.trim();
+      if (status.trim() === "Disposed") {
+        payload.disposalRemarks = disposalRemarks.trim();
+      }
+      await partnerUpdateCase(item.id, payload);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't update");
@@ -462,11 +476,44 @@ function UpdateHearingSheet({
             multiline
           />
         </View>
+        {status.trim() === "Disposed" ? (
+          <View className="mt-3.5">
+            <Text
+              className="text-[11px] uppercase mb-1.5"
+              style={{
+                fontFamily: "DMMono-Medium",
+                letterSpacing: 1.2,
+                color: "#8a5821",
+              }}
+            >
+              Disposal note
+            </Text>
+            <TextInput
+              value={disposalRemarks}
+              onChangeText={setDisposalRemarks}
+              placeholder="Decree passed / compromised / withdrawn / dismissed…"
+              placeholderTextColor="#a89c80"
+              multiline
+              className="rounded-xl text-[14px] text-app-ink"
+              style={{
+                fontFamily: "Manrope",
+                minHeight: 84,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                textAlignVertical: "top",
+                backgroundColor: "#faf6ee",
+                borderWidth: 1,
+                borderColor: "#e3d9c0",
+              }}
+            />
+          </View>
+        ) : null}
         <Text
           className="mt-2 text-[11px] text-app-fg-muted"
           style={{ fontFamily: "Manrope" }}
         >
-          Leave the date empty to move the matter to Pending.
+          Leave the date empty to move the matter to Pending. Leave status blank
+          to keep it as-is.
         </Text>
 
         <Pressable
@@ -703,9 +750,27 @@ function ScheduledRow({
         ) : null}
       </Pressable>
 
-      {c.cnr ? (
-        <View className="mt-2">
-          <CnrChip cnr={c.cnr} />
+      {(c.fileNo || c.cnr) ? (
+        <View
+          className="mt-2 flex-row items-center flex-wrap"
+          style={{ gap: 6 }}
+        >
+          {c.fileNo ? (
+            <Text
+              style={{
+                fontFamily: "DMMono-Medium",
+                fontSize: 11,
+                color: "#a89c80",
+                letterSpacing: 0.3,
+              }}
+            >
+              File {c.fileNo}
+            </Text>
+          ) : null}
+          {c.fileNo && c.cnr ? (
+            <Text style={{ color: "#c5853a", fontSize: 11 }}>·</Text>
+          ) : null}
+          {c.cnr ? <CnrChip cnr={c.cnr} /> : null}
         </View>
       ) : null}
 
@@ -775,7 +840,7 @@ function PendingCard({
 }) {
   const router = useRouter();
   const [date, setDate] = useState("");
-  const [status, setStatus] = useState(c.status || "Filed");
+  const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -791,10 +856,12 @@ function PendingCard({
     }
     setSaving(true);
     try {
-      await partnerUpdateCase(c.id, {
+      const payload: { nextHearingDate: string; status?: string } = {
         nextHearingDate: date,
-        status,
-      });
+      };
+      // Blank status keeps the matter's current status; a typed status applies.
+      if (status.trim()) payload.status = status.trim();
+      await partnerUpdateCase(c.id, payload);
       setSavedFlash(true);
       setTimeout(() => onUpdated(), 350);
     } catch (err) {
@@ -837,9 +904,27 @@ function PendingCard({
               {c.clientName}
             </Text>
           ) : null}
-          {c.cnr ? (
-            <View className="mt-1.5">
-              <CnrChip cnr={c.cnr} />
+          {(c.fileNo || c.cnr) ? (
+            <View
+              className="mt-1.5 flex-row items-center flex-wrap"
+              style={{ gap: 6 }}
+            >
+              {c.fileNo ? (
+                <Text
+                  style={{
+                    fontFamily: "DMMono-Medium",
+                    fontSize: 11,
+                    color: "#a89c80",
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  File {c.fileNo}
+                </Text>
+              ) : null}
+              {c.fileNo && c.cnr ? (
+                <Text style={{ color: "#c5853a", fontSize: 11 }}>·</Text>
+              ) : null}
+              {c.cnr ? <CnrChip cnr={c.cnr} /> : null}
             </View>
           ) : null}
           {c.lastHearingDate ? (

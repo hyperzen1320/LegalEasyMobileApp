@@ -98,6 +98,12 @@ export default function More() {
           },
         ] as MoreItem[])
       : []),
+    {
+      label: "Support",
+      description: "Tutorials & report an issue",
+      icon: "help-circle",
+      onPress: () => router.push("/(home)/support"),
+    },
   ];
 
   const account: MoreItem[] = [
