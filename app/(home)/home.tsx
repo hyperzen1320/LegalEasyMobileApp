@@ -25,7 +25,7 @@ import { LiveOverview } from "../../components/LiveOverview";
 import BellSheet from "../../components/BellSheet";
 
 export default function PartnerHome() {
-  const { user, partner } = useAuth();
+  const { user, partner, isPartnerAdmin } = useAuth();
   const { unread } = useChatUnread();
   const [data, setData] = useState<PartnerDashboardData | null>(null);
   const [boardCount, setBoardCount] = useState(0);
@@ -123,7 +123,10 @@ export default function PartnerHome() {
 
           <TodaysBoard board={data?.todaysBoard ?? []} />
 
-          <LiveOverview onOpenBell={() => setBellOpen(true)} />
+          {/* The activity feed is the office admin's audit trail only. */}
+          {isPartnerAdmin ? (
+            <LiveOverview onOpenBell={() => setBellOpen(true)} />
+          ) : null}
         </ScrollView>
       </SafeAreaView>
 
@@ -256,12 +259,13 @@ function Hero({
       {/* Brand mark, top-right corner */}
       <View
         pointerEvents="none"
-        style={{ position: "absolute", right: 4, top: 8, opacity: 0.85 }}
+        style={{ position: "absolute", right: 4, top: 8, opacity: 0.7 }}
       >
         <Image
           source={require("../../assets/logo.png")}
-          style={{ width: 40, height: 84 }}
+          style={{ width: 30, height: 63 }}
           resizeMode="contain"
+          tintColor="#ffffff"
         />
       </View>
 
