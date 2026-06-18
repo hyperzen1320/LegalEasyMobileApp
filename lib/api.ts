@@ -958,6 +958,21 @@ export async function partnerDeleteList(
   return api(`/api/app/lists/${listId}`, { method: "DELETE" });
 }
 
+/**
+ * Reorder the board's columns. Pass the FULL ordered array of list ids;
+ * the server bulk-writes each list's sortOrder to its index in the array.
+ * Layout-only — the server records no activity for it.
+ */
+export async function partnerReorderLists(
+  boardId: string,
+  listIds: string[]
+): Promise<{ ok: true }> {
+  return api(`/api/app/boards/${boardId}/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ listIds }),
+  });
+}
+
 /* ─── Tasks (cards) CRUD ─────────────────────────────────────────────── */
 
 export type TaskFullChecklistItem = {

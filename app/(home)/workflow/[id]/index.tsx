@@ -22,6 +22,7 @@ import {
   partnerCreateTask,
   partnerMoveTask,
   partnerDeleteTask,
+  partnerReorderLists,
   partnerDeleteRequestCount,
   deleteRequestRequired,
   ApiError,
@@ -47,6 +48,7 @@ import {
   useBoardDnd,
   DropIndicator,
 } from "../../../../components/workflow/dnd/useBoardDnd";
+import { useListDnd } from "../../../../components/workflow/dnd/useListDnd";
 import { useBreakpoint } from "../../../../lib/useBreakpoint";
 import BoardExportSheet from "../../../../components/workflow/BoardExportSheet";
 import BoardSettingsSheet from "../../../../components/workflow/BoardSettingsSheet";
@@ -345,10 +347,77 @@ export default function BoardDetail() {
     onMove: moveCardTo,
   });
 
+  // Reorder whole columns (the list-header drag). Rewrites every list's
+  // sortOrder to its index in the dropped order — the exact thing the
+  // server does — then persists. On any failure we snap back to the
+  // pre-drag order and surface an Alert. Skips if a temp (unsaved) list is
+  // in the mix, since those have no server id yet.
+  const reorderLists = useCallback(
+    async (orderedListIds: string[]) => {
+      if (!data) return;
+      if (orderedListIds.some((lid) => isTemp(lid))) return;
+      const snapshot = data;
+      const rank = new Map(orderedListIds.map((lid, i) => [lid, i]));
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          lists: prev.lists.map((l) =>
+            rank.has(l.id) ? { ...l, sortOrder: rank.get(l.id)! } : l
+          ),
+        };
+      });
+      try {
+        await partnerReorderLists(boardId, orderedListIds);
+      } catch (err) {
+        setData(snapshot);
+        Alert.alert(
+          "Couldn't reorder lists",
+          err instanceof ApiError ? err.message : "Try again."
+        );
+      }
+    },
+    [data, boardId, isTemp]
+  );
+
+  const listDnd = useListDnd({
+    listWidth,
+    screenWidth: windowWidth,
+    lists: sortedLists,
+    isTemp,
+    onReorder: reorderLists,
+    // Share the one horizontal scroller the card hook already owns.
+    hScrollRef: dnd.hScrollRef,
+    hScrollOffset: dnd.hScrollOffset,
+  });
+
   // Cross-user resyncs mid-drag would yank the board out from under the
-  // finger — hold them until the drop lands.
+  // finger — hold them until the drop lands (either a card or a column).
   const isDraggingRef = useRef(false);
-  isDraggingRef.current = dnd.isDragging;
+  isDraggingRef.current = dnd.isDragging || listDnd.isDragging;
+
+  // Either drag in flight disables the scrollers and snapping.
+  const anyDragging = dnd.isDragging || listDnd.isDragging;
+
+  // While a column drag is live, render columns in the preview order so the
+  // siblings physically shift to make room; otherwise honour sortOrder.
+  const renderLists = useMemo(() => {
+    if (!listDnd.previewOrder) return sortedLists;
+    const byId = new Map(sortedLists.map((l) => [l.id, l]));
+    const ordered: CanvasList[] = [];
+    for (const lid of listDnd.previewOrder) {
+      const l = byId.get(lid);
+      if (l) ordered.push(l);
+    }
+    // Any list created mid-drag (optimistic temp) isn't in previewOrder —
+    // keep it visible by appending in its existing relative position.
+    if (ordered.length !== sortedLists.length) {
+      for (const l of sortedLists) {
+        if (!listDnd.previewOrder.includes(l.id)) ordered.push(l);
+      }
+    }
+    return ordered;
+  }, [listDnd.previewOrder, sortedLists]);
 
   /* ─── Mutations: optimistic ─── */
   const addList = useCallback(
@@ -571,15 +640,16 @@ export default function BoardDetail() {
             ref={dnd.hScrollRef}
             onScroll={dnd.hScrollHandler}
             scrollEventThrottle={16}
-            scrollEnabled={!dnd.isDragging}
+            scrollEnabled={!anyDragging}
             horizontal
             showsHorizontalScrollIndicator={false}
             decelerationRate="fast"
             // Free scroll once three-plus columns fit; snapping fights
             // the user when the viewport already shows several lists.
-            // Snapping also pauses mid-drag so autoscroll lands cleanly.
+            // Snapping also pauses mid-drag (card OR column) so autoscroll
+            // lands cleanly.
             snapToInterval={
-              isExpanded || dnd.isDragging ? undefined : listWidth + 12
+              isExpanded || anyDragging ? undefined : listWidth + 12
             }
             snapToAlignment="start"
             contentContainerStyle={{
@@ -596,7 +666,7 @@ export default function BoardDetail() {
               />
             }
           >
-            {sortedLists.map((list) => (
+            {renderLists.map((list) => (
               <ListColumn
                 key={list.id}
                 list={list}
@@ -611,6 +681,11 @@ export default function BoardDetail() {
                 listTitleById={listTitleById}
                 accent={styles.accent}
                 dnd={dnd}
+                headerGesture={listDnd.makeHeaderGesture(
+                  list,
+                  (tasksByList.get(list.id) || []).length
+                )}
+                isColumnDragging={listDnd.draggingListId === list.id}
                 onAddCard={(title) => addCard(list.id, title)}
                 onCardPress={(task) =>
                   router.push(
@@ -731,8 +806,10 @@ export default function BoardDetail() {
         </>
       ) : null}
 
-      {/* Drag clone — floats above everything while a card is in hand */}
+      {/* Drag clones — float above everything while a card or a whole
+          column is in hand. Only one is ever non-null at a time. */}
       {dnd.overlay}
+      {listDnd.overlay}
     </View>
   );
 }
@@ -929,6 +1006,8 @@ function ListColumn({
   listTitleById,
   accent,
   dnd,
+  headerGesture,
+  isColumnDragging,
   onAddCard,
   onCardPress,
   onCardLongPress,
@@ -940,6 +1019,8 @@ function ListColumn({
   listTitleById: Map<string, string>;
   accent: string;
   dnd: ReturnType<typeof useBoardDnd>;
+  headerGesture: ReturnType<ReturnType<typeof useListDnd>["makeHeaderGesture"]>;
+  isColumnDragging: boolean;
   onAddCard: (title: string) => void;
   onCardPress: (task: PreviewTask) => void;
   onCardLongPress: (task: PreviewTask) => void;
@@ -964,7 +1045,13 @@ function ListColumn({
         backgroundColor: "rgba(255,255,255,0.92)",
         borderRadius: 14,
         overflow: "hidden",
-        opacity: isPending ? 0.7 : 1,
+        // While this column is the one in hand, it leaves a dashed, dimmed
+        // "ghost slot" where it sits in the preview order; the floating
+        // clone carries the live header above the board.
+        opacity: isColumnDragging ? 0.32 : isPending ? 0.7 : 1,
+        borderWidth: isColumnDragging ? 1.5 : 0,
+        borderStyle: "dashed",
+        borderColor: isColumnDragging ? "#c5853a" : "transparent",
         shadowColor: "#0a1124",
         shadowOpacity: 0.08,
         shadowRadius: 8,
@@ -972,39 +1059,47 @@ function ListColumn({
         elevation: 3,
       }}
     >
-      {/* Top stripe */}
-      <View style={{ height: 4, backgroundColor: stripe }} />
+      {/* Top stripe — doubles as the drag grip together with the title row */}
+      <GestureDetector gesture={headerGesture}>
+        <View collapsable={false}>
+          <View style={{ height: 4, backgroundColor: stripe }} />
 
-      {/* Header */}
-      <View
-        className="px-3 pt-3 pb-2 flex-row items-center"
-        style={{ gap: 6 }}
-      >
-        <Text
-          className="flex-1 text-[14px] tracking-tight text-app-ink"
-          style={{ fontFamily: "Crimson-SemiBold" }}
-          numberOfLines={1}
-        >
-          {list.title}
-        </Text>
-        {tasks.length > 0 ? (
+          {/* Header (long-press here to lift the whole column) */}
           <View
-            className="rounded px-1.5"
-            style={{ backgroundColor: "#efe5d0" }}
+            className="px-3 pt-3 pb-2 flex-row items-center"
+            style={{ gap: 6 }}
           >
             <Text
-              className="text-[10px] tabular-nums"
-              style={{
-                fontFamily: "DMMono-Medium",
-                color: "#4d4538",
-                letterSpacing: 0.4,
-              }}
+              className="flex-1 text-[14px] tracking-tight text-app-ink"
+              style={{ fontFamily: "Crimson-SemiBold" }}
+              numberOfLines={1}
             >
-              {tasks.length}
+              {list.title}
             </Text>
+            {tasks.length > 0 ? (
+              <View
+                className="rounded px-1.5"
+                style={{ backgroundColor: "#efe5d0" }}
+              >
+                <Text
+                  className="text-[10px] tabular-nums"
+                  style={{
+                    fontFamily: "DMMono-Medium",
+                    color: "#4d4538",
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  {tasks.length}
+                </Text>
+              </View>
+            ) : null}
+            {/* Grip affordance — signals the header is draggable */}
+            {!isPending ? (
+              <Feather name="more-vertical" size={13} color="#c0b69c" />
+            ) : null}
           </View>
-        ) : null}
-      </View>
+        </View>
+      </GestureDetector>
 
       {/* Edges chips */}
       {(edges.incoming.length > 0 || edges.outgoing.length > 0) && (
