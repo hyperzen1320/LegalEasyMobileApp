@@ -30,6 +30,7 @@ import {
 import { DateField } from "../../components/CaseFields";
 import StatusCombobox from "../../components/cases/StatusCombobox";
 import Sheet from "../../components/Sheet";
+import CnrChip from "../../components/CnrChip";
 import { useAuth } from "../../lib/auth-context";
 import ExportSheet from "../../components/ExportSheet";
 import {
@@ -445,6 +446,12 @@ function UpdateHearingSheet({
           </View>
         ) : null}
 
+        {item?.cnr ? (
+          <View className="mb-3.5">
+            <CnrChip cnr={item.cnr} />
+          </View>
+        ) : null}
+
         <DateField label="Next hearing date" value={date} onChange={setDate} />
         <View className="mt-3">
           <StatusCombobox
@@ -696,6 +703,12 @@ function ScheduledRow({
         ) : null}
       </Pressable>
 
+      {c.cnr ? (
+        <View className="mt-2">
+          <CnrChip cnr={c.cnr} />
+        </View>
+      ) : null}
+
       {/* Action row */}
       <View className="mt-3.5 flex-row items-center gap-2">
         <CallButton c={c} hasNumber={hasPhone} />
@@ -815,33 +828,19 @@ function PendingCard({
           >
             {c.caseNo}
           </Text>
-          {(c.clientName || c.cnr) ? (
+          {c.clientName ? (
             <Text
               className="mt-1 text-[12px]"
-              style={{ fontFamily: "Manrope", color: "#4d4538" }}
+              style={{ fontFamily: "Manrope-SemiBold", color: "#0a1124" }}
               numberOfLines={2}
             >
-              {c.clientName ? (
-                <Text
-                  style={{
-                    fontFamily: "Manrope-SemiBold",
-                    color: "#0a1124",
-                  }}
-                >
-                  {c.clientName}
-                </Text>
-              ) : null}
-              {c.clientName && c.cnr ? (
-                <Text style={{ color: "#8a5821" }}>{"  ·  "}</Text>
-              ) : null}
-              {c.cnr ? (
-                <Text
-                  style={{ fontFamily: "DMMono", color: "#7a7060" }}
-                >
-                  CNR {c.cnr}
-                </Text>
-              ) : null}
+              {c.clientName}
             </Text>
+          ) : null}
+          {c.cnr ? (
+            <View className="mt-1.5">
+              <CnrChip cnr={c.cnr} />
+            </View>
           ) : null}
           {c.lastHearingDate ? (
             <Text

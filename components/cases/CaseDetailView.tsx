@@ -23,6 +23,7 @@ import { DateField, formatDateForDisplay } from "../CaseFields";
 import StatusCombobox from "./StatusCombobox";
 import DocumentsPanel from "./DocumentsPanel";
 import DisposePanel from "./DisposePanel";
+import CnrChip from "../CnrChip";
 
 // The whole case dossier as an embeddable view — the [id] route wraps it
 // full-screen on phones; the Case Vault renders it as the right pane of
@@ -288,16 +289,9 @@ function Hero({ c }: { c: PartnerCase }) {
         {c.caseNo}
       </Text>
       {c.cnr ? (
-        <Text
-          className="mt-1 text-[11px]"
-          style={{
-            fontFamily: "DMMono",
-            letterSpacing: 0.5,
-            color: "rgba(245,235,214,0.55)",
-          }}
-        >
-          CNR {c.cnr}
-        </Text>
+        <View className="mt-1.5">
+          <CnrChip cnr={c.cnr} tone="dark" />
+        </View>
       ) : null}
 
       {/* Parties */}
@@ -344,7 +338,7 @@ function Hero({ c }: { c: PartnerCase }) {
       <View className="mt-5 flex-row items-end justify-between gap-3">
         <View
           className="rounded-md px-3 py-1.5"
-          style={{ backgroundColor: "#c5853a" }}
+          style={{ backgroundColor: "#c5853a", flexShrink: 1 }}
         >
           <Text
             className="text-[10px] font-semibold uppercase"
@@ -353,12 +347,13 @@ function Hero({ c }: { c: PartnerCase }) {
               letterSpacing: 1.8,
               color: "#2a1c08",
             }}
+            numberOfLines={2}
           >
             {c.status || "Filed"}
           </Text>
         </View>
         {next ? (
-          <View>
+          <View style={{ flexShrink: 0 }}>
             <Text
               className="text-[9px] uppercase text-right"
               style={{
@@ -414,6 +409,7 @@ function Hero({ c }: { c: PartnerCase }) {
           <View
             className="rounded-md px-3 py-1.5"
             style={{
+              flexShrink: 0,
               borderWidth: 1,
               borderColor: "rgba(245,235,214,0.2)",
               backgroundColor: "rgba(245,235,214,0.06)",
