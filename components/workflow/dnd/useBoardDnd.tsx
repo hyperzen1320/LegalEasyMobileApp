@@ -302,6 +302,10 @@ export function useBoardDnd(opts: {
     makeGesture,
     hScrollRef,
     hScrollHandler,
+    // Exposed so a sibling hook (list/column drag) can share the one and
+    // only horizontal scroller — the board mounts a single Animated.ScrollView,
+    // so both drag hooks must read/write the same offset & ref.
+    hScrollOffset,
     setColumnScrollRef,
     onColumnScroll,
     setColumnWindowTop,
