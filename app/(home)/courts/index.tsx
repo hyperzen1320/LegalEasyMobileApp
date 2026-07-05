@@ -28,6 +28,7 @@ import {
   type PartnerCourt,
   type DeleteRequestRequiredError,
 } from "../../../lib/api";
+import { sortCourts } from "../../../lib/court-order";
 
 export default function CourtHub() {
   const [courts, setCourts] = useState<PartnerCourt[]>([]);
@@ -69,20 +70,22 @@ export default function CourtHub() {
   }, [load]);
 
   function handleAdded(c: PartnerCourt) {
-    setCourts((prev) =>
-      [c, ...prev].sort((a, b) => a.name.localeCompare(b.name))
-    );
+    // Display order (by court number) is applied in `filtered`; just prepend.
+    setCourts((prev) => [c, ...prev]);
   }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return courts;
-    return courts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.number || "").toLowerCase().includes(q) ||
-        (c.place || "").toLowerCase().includes(q)
-    );
+    const base = !q
+      ? courts
+      : courts.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            (c.number || "").toLowerCase().includes(q) ||
+            (c.place || "").toLowerCase().includes(q)
+        );
+    // Order the rolls by court number (see lib/court-order), un-numbered last.
+    return sortCourts(base);
   }, [courts, query]);
 
   return (
@@ -209,9 +212,7 @@ export default function CourtHub() {
         onClose={() => setEditing(null)}
         onSaved={(next) => {
           setCourts((prev) =>
-            prev
-              .map((c) => (c.id === next.id ? { ...c, ...next } : c))
-              .sort((a, b) => a.name.localeCompare(b.name))
+            prev.map((c) => (c.id === next.id ? { ...c, ...next } : c))
           );
           setEditing(null);
         }}
