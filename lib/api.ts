@@ -314,6 +314,29 @@ export async function partnerCreateSupportTicket(payload: {
   });
 }
 
+/* ─────────── Tutorials (global-admin-managed media) ─────────── */
+export type TutorialMedia = {
+  id: string;
+  title: string;
+  description: string;
+  kind: "video" | "image" | "pdf";
+  size: number;
+  contentType: string;
+};
+
+export async function partnerListTutorials(): Promise<{
+  tutorials: TutorialMedia[];
+}> {
+  return api<{ tutorials: TutorialMedia[] }>("/api/mobile/tutorials");
+}
+
+// Absolute URL of a tutorial's binary — fed to the video player / <Image>
+// with an Authorization header (see getAuthHeader). The endpoint supports
+// HTTP range requests so the player can seek.
+export function tutorialFileUrl(id: string): string {
+  return `${getApiBaseUrl()}/api/mobile/tutorials/${id}/file`;
+}
+
 /* ─────────── Admin endpoints (for global_admin) ─────────── */
 export async function adminDashboard(): Promise<DashboardData> {
   return api<DashboardData>("/api/admin/dashboard", { method: "GET" });

@@ -141,6 +141,45 @@ export default function Support() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            {/* Video tutorials — media library curated by the Legalezi team */}
+            <Pressable
+              onPress={() => router.push("/(home)/tutorials")}
+              className="rounded-2xl p-4 flex-row items-center gap-3 active:opacity-90"
+              style={{
+                backgroundColor: "#0a1124",
+                marginBottom: 20,
+                shadowColor: "#0a1124",
+                shadowOpacity: 0.18,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 5 },
+                elevation: 5,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open video tutorials"
+            >
+              <View
+                className="h-10 w-10 items-center justify-center rounded-xl"
+                style={{ backgroundColor: "#c5853a" }}
+              >
+                <Feather name="play" size={18} color="#2a1c08" />
+              </View>
+              <View className="flex-1">
+                <Text
+                  className="text-[15px]"
+                  style={{ fontFamily: "Crimson-SemiBold", color: "#f5ebd6" }}
+                >
+                  Video tutorials
+                </Text>
+                <Text
+                  className="mt-0.5 text-[12px]"
+                  style={{ fontFamily: "Manrope", color: "#ddb074" }}
+                >
+                  Watch walkthroughs &amp; guides
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color="#ddb074" />
+            </Pressable>
+
             {/* Quick tutorial */}
             <Text
               className="text-[11px] uppercase mb-2.5"
