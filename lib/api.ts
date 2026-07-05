@@ -298,6 +298,22 @@ export async function requestAccess(payload: {
   });
 }
 
+// Raise a support ticket from More → Support. The reporter's identity
+// (name / email) is resolved server-side from the session, so we only send
+// the subject, category, message and an optional phone override. It lands
+// in the Global-Admin support inbox.
+export async function partnerCreateSupportTicket(payload: {
+  subject?: string;
+  category?: string;
+  message: string;
+  phone?: string;
+}): Promise<{ ok: true; id: string }> {
+  return api<{ ok: true; id: string }>("/api/mobile/support", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /* ─────────── Admin endpoints (for global_admin) ─────────── */
 export async function adminDashboard(): Promise<DashboardData> {
   return api<DashboardData>("/api/admin/dashboard", { method: "GET" });
