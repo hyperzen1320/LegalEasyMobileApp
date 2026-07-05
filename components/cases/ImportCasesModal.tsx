@@ -147,7 +147,10 @@ function buildPayloads(rows: string[][]): Parsed {
         payload[k] = val;
       }
     }
-    payloads.push(payload as PartnerCaseInput);
+    // The CSV importer only ever produces string fields (caseNo guaranteed
+    // above); the two-step cast is needed because PartnerCaseInput now also
+    // has non-string members (e.g. receivedByClient) the import never sets.
+    payloads.push(payload as unknown as PartnerCaseInput);
   }
   return { payloads, skipped, total: rows.length - 1 };
 }

@@ -405,7 +405,10 @@ export type PartnerCase = {
   lastHearingDate: string | null;
   hearings: PartnerCaseHearing[];
   disposedAt: string | null;
+  disposalDate: string | null;
   disposalRemarks: string;
+  caStatus: string;
+  receivedByClient: boolean;
   createdAt: string;
   updatedAt: string;
   // Present on list rows (the detail serializer omits some of these).
@@ -433,9 +436,14 @@ export type PartnerCaseInput = {
   status?: string;
   nextHearingDate?: string | null;
   lastHearingDate?: string | null;
-  // Free-form note shown on the disposed archive. Persisted whenever the
-  // status moves to "Disposed" (admin-only transition, server-enforced).
+  // Disposal record — persisted whenever the status is "Disposed" (an
+  // admin-only transition, server-enforced). disposalDate is the recorded
+  // order date (defaults to today server-side); caStatus tracks the
+  // certified-copy application (Applied / Ready / Delivered).
   disposalRemarks?: string;
+  disposalDate?: string | null;
+  caStatus?: string;
+  receivedByClient?: boolean;
 };
 
 export type PartnerDashboardData = {
@@ -1476,7 +1484,10 @@ export type DisposedCase = {
   status: string;
   appearingFor: string;
   disposedAt: string | null;
+  disposalDate: string | null;
   disposalRemarks: string;
+  caStatus: string;
+  receivedByClient: boolean;
   lastHearingDate: string | null;
   createdAt: string;
   updatedAt: string;
