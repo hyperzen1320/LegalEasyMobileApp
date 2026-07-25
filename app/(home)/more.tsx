@@ -99,10 +99,10 @@ export default function More() {
         ] as MoreItem[])
       : []),
     {
-      label: "Support",
-      description: "Tutorials & report an issue",
-      icon: "help-circle",
-      onPress: () => router.push("/(home)/support"),
+      label: "Tools",
+      description: "Handy tools for your practice",
+      icon: "tool",
+      onPress: () => router.push("/(home)/tools"),
     },
   ];
 
@@ -112,6 +112,12 @@ export default function More() {
       description: "Identity & signature",
       icon: "user",
       onPress: () => router.push("/(home)/profile"),
+    },
+    {
+      label: "Support",
+      description: "Tutorials & report an issue",
+      icon: "life-buoy",
+      onPress: () => router.push("/(home)/support"),
     },
     {
       label: "Sign out",
