@@ -58,6 +58,42 @@ const STATUS_OPTIONS = [
   "Disposed",
 ];
 
+// The three fields a hearing update can change on the record. A saved
+// patch is held on the SCREEN, not inside the editor, so the card behind
+// it — and the WhatsApp button on that card — describe the hearing that
+// was just saved the instant Save succeeds. The list is only refetched on
+// Done, which is what lets a freshly-dated matter stay put long enough to
+// message the client before it leaves this bucket.
+type SavedPatch = Pick<
+  PartnerHearingItem,
+  "status" | "nextHearingDate" | "lastHearingDate"
+>;
+
+// Takes the saved record from the server's response rather than
+// re-deriving it: the PATCH also archives the old next-date into
+// lastHearingDate, and the notice has to quote the same three fields the
+// case file now holds.
+function patchFromSavedCase(
+  before: PartnerHearingItem,
+  saved: {
+    status?: string;
+    nextHearingDate?: string | null;
+    lastHearingDate?: string | null;
+  } | null
+): SavedPatch {
+  return {
+    status: saved?.status ?? before.status,
+    nextHearingDate:
+      saved && "nextHearingDate" in saved
+        ? (saved.nextHearingDate ?? null)
+        : before.nextHearingDate,
+    lastHearingDate:
+      saved && "lastHearingDate" in saved
+        ? (saved.lastHearingDate ?? null)
+        : before.nextHearingDate || before.lastHearingDate,
+  };
+}
+
 export default function Hearings() {
   const { isPartnerAdmin } = useAuth();
   const [bucket, setBucket] = useState<HearingBucket>("today");
@@ -94,11 +130,27 @@ export default function Hearings() {
   // Court-wise grouping (the cause-list reading order) + the compact
   // update sheet for scheduled rows.
   const [groupByCourt, setGroupByCourt] = useState(false);
-  const [updating, setUpdating] = useState<PartnerHearingItem | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // Rows whose hearing was saved in this session, keyed by case id. Applied
+  // over the server list so a card keeps showing (and messaging) what was
+  // just saved until Done refetches.
+  const [savedPatches, setSavedPatches] = useState<Record<string, SavedPatch>>(
+    {}
+  );
+
+  const view = useMemo(
+    () =>
+      items.map((c) => (savedPatches[c.id] ? { ...c, ...savedPatches[c.id] } : c)),
+    [items, savedPatches]
+  );
+  const updating = useMemo(
+    () => view.find((c) => c.id === updatingId) ?? null,
+    [view, updatingId]
+  );
 
   const courtGroups = useMemo(() => {
     const map = new Map<string, PartnerHearingItem[]>();
-    for (const c of items) {
+    for (const c of view) {
       const key =
         [c.courtName, c.courtPlace].filter(Boolean).join(", ") ||
         "Court not set";
@@ -109,7 +161,7 @@ export default function Hearings() {
     return Array.from(map.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([title, groupItems]) => ({ title, items: groupItems }));
-  }, [items]);
+  }, [view]);
 
   const load = useCallback(
     async (b: HearingBucket) => {
@@ -149,6 +201,8 @@ export default function Hearings() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    // A deliberate refresh means the server list is the truth again.
+    setSavedPatches({});
     await load(bucket);
     setRefreshing(false);
   }, [bucket, load]);
@@ -156,8 +210,29 @@ export default function Hearings() {
   function changeBucket(next: HearingBucket) {
     if (next === bucket) return;
     setLoading(true);
+    setSavedPatches({});
     setBucket(next);
   }
+
+  // Save landed — hold the record locally so the card and its WhatsApp
+  // button quote it immediately.
+  const applyPatch = useCallback((id: string, patch: SavedPatch) => {
+    setSavedPatches((prev) => ({ ...prev, [id]: patch }));
+  }, []);
+
+  // Done with this matter — drop the local copy and refetch so the row
+  // re-buckets out of Today / Pending.
+  const finishWith = useCallback(
+    (id: string) => {
+      setSavedPatches((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      load(bucket);
+    },
+    [bucket, load]
+  );
 
   return (
     <View className="flex-1 bg-app-canvas">
@@ -243,11 +318,11 @@ export default function Hearings() {
               </View>
             ) : null}
 
-            {items.length === 0 ? (
+            {view.length === 0 ? (
               <Empty bucket={bucket} />
             ) : bucket === "pending" ? (
               <View className="gap-4">
-                {items.map((c, i) => (
+                {view.map((c, i) => (
                   <Animated.View
                     key={c.id}
                     entering={FadeInDown.duration(380).delay(
@@ -258,7 +333,9 @@ export default function Hearings() {
                       c={c}
                       officeName={officeName}
                       template={template}
-                      onUpdated={() => load(bucket)}
+                      saved={Boolean(savedPatches[c.id])}
+                      onSaved={(patch) => applyPatch(c.id, patch)}
+                      onDone={() => finishWith(c.id)}
                     />
                   </Animated.View>
                 ))}
@@ -290,10 +367,10 @@ export default function Hearings() {
                         <ScheduledRow
                           key={c.id}
                           c={c}
-                          bucket={bucket}
                           officeName={officeName}
                           template={template}
-                          onUpdate={() => setUpdating(c)}
+                          saved={Boolean(savedPatches[c.id])}
+                          onUpdate={() => setUpdatingId(c.id)}
                         />
                       ))}
                     </View>
@@ -302,7 +379,7 @@ export default function Hearings() {
               </View>
             ) : (
               <View className="gap-3">
-                {items.map((c, i) => (
+                {view.map((c, i) => (
                   <Animated.View
                     key={c.id}
                     entering={FadeInDown.duration(380).delay(
@@ -311,10 +388,10 @@ export default function Hearings() {
                   >
                     <ScheduledRow
                       c={c}
-                      bucket={bucket}
                       officeName={officeName}
                       template={template}
-                      onUpdate={() => setUpdating(c)}
+                      saved={Boolean(savedPatches[c.id])}
+                      onUpdate={() => setUpdatingId(c.id)}
                     />
                   </Animated.View>
                 ))}
@@ -371,10 +448,16 @@ export default function Hearings() {
 
       <UpdateHearingSheet
         item={updating}
-        onClose={() => setUpdating(null)}
-        onSaved={() => {
-          setUpdating(null);
-          load(bucket);
+        officeName={officeName}
+        template={template}
+        onClose={() => setUpdatingId(null)}
+        onSaved={(patch) => {
+          if (updatingId) applyPatch(updatingId, patch);
+        }}
+        onDone={() => {
+          const id = updatingId;
+          setUpdatingId(null);
+          if (id) finishWith(id);
         }}
       />
     </View>
@@ -385,30 +468,52 @@ export default function Hearings() {
 
 function UpdateHearingSheet({
   item,
+  officeName,
+  template,
   onClose,
   onSaved,
+  onDone,
 }: {
   item: PartnerHearingItem | null;
+  officeName: string;
+  template: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (patch: SavedPatch) => void;
+  onDone: () => void;
 }) {
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
   const [disposalRemarks, setDisposalRemarks] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasSaved, setHasSaved] = useState(false);
+  // What the last save put on record. Re-editing compares against this
+  // rather than the row we opened with, so the button doesn't stay lit on
+  // a value that's already written.
+  const [baseline, setBaseline] = useState({ date: "", status: "" });
 
+  const itemId = item?.id ?? null;
   useEffect(() => {
-    if (item) {
-      setDate(item.nextHearingDate ? item.nextHearingDate.slice(0, 10) : "");
-      // Status starts blank — set consciously; left blank, the stored status is
-      // kept. The disposal note opens only when the status is "Disposed".
-      setStatus("");
-      setDisposalRemarks("");
-      setError(null);
-      setSaving(false);
-    }
-  }, [item]);
+    if (!item) return;
+    const d = item.nextHearingDate ? item.nextHearingDate.slice(0, 10) : "";
+    setDate(d);
+    // Status starts blank — set consciously; left blank, the stored status is
+    // kept. The disposal note opens only when the status is "Disposed".
+    setStatus("");
+    setBaseline({ date: d, status: item.status ?? "" });
+    setDisposalRemarks("");
+    setError(null);
+    setSaving(false);
+    setHasSaved(false);
+    // Re-arm only when a DIFFERENT matter is opened — the row object itself
+    // changes identity on every save (the patch is applied above us), and
+    // re-running then would wipe the form the moment it succeeded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId]);
+
+  const statusChanged =
+    status.trim().length > 0 && status.trim() !== baseline.status;
+  const dirty = date !== baseline.date || statusChanged;
 
   async function save() {
     if (!item || saving) return;
@@ -428,14 +533,25 @@ function UpdateHearingSheet({
       if (status.trim() === "Disposed") {
         payload.disposalRemarks = disposalRemarks.trim();
       }
-      await partnerUpdateCase(item.id, payload);
-      onSaved();
+      const res = await partnerUpdateCase(item.id, payload);
+      const patch = patchFromSavedCase(item, res.case ?? null);
+      setBaseline({
+        date: patch.nextHearingDate ? patch.nextHearingDate.slice(0, 10) : "",
+        status: patch.status,
+      });
+      setHasSaved(true);
+      onSaved(patch);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't update");
     } finally {
       setSaving(false);
     }
   }
+
+  // The notify block reads the SAME row the list behind the sheet now
+  // renders, so the card and the message can't disagree about what was
+  // saved.
+  const showNotify = hasSaved && !dirty && Boolean(item);
 
   return (
     <Sheet
@@ -518,16 +634,16 @@ function UpdateHearingSheet({
 
         <Pressable
           onPress={save}
-          disabled={saving}
+          disabled={saving || (!dirty && hasSaved)}
           className="mt-5 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
           style={{
-            backgroundColor: "#0a1124",
+            backgroundColor: !dirty && hasSaved ? "#efe5d0" : "#0a1124",
             paddingVertical: 14,
             shadowColor: "#0a1124",
-            shadowOpacity: 0.22,
+            shadowOpacity: !dirty && hasSaved ? 0 : 0.22,
             shadowRadius: 10,
             shadowOffset: { width: 0, height: 4 },
-            elevation: 4,
+            elevation: !dirty && hasSaved ? 0 : 4,
           }}
           accessibilityRole="button"
           accessibilityLabel="Save hearing update"
@@ -535,15 +651,85 @@ function UpdateHearingSheet({
           {saving ? (
             <ActivityIndicator size="small" color="#f5ebd6" />
           ) : (
-            <Feather name="check" size={15} color="#f5ebd6" />
+            <Feather
+              name="check"
+              size={15}
+              color={!dirty && hasSaved ? "#4d4538" : "#f5ebd6"}
+            />
           )}
           <Text
             className="text-[13.5px]"
-            style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+            style={{
+              fontFamily: "Manrope-SemiBold",
+              color: !dirty && hasSaved ? "#4d4538" : "#f5ebd6",
+            }}
           >
-            {saving ? "Saving…" : "Save update"}
+            {saving ? "Saving…" : hasSaved && !dirty ? "Saved" : "Save update"}
           </Text>
         </Pressable>
+
+        {/* Saved — notify the client with what's now on record, then Done.
+            The matter stays in the list behind this sheet until Done, so
+            the message can go out before the row leaves the bucket. */}
+        {showNotify && item ? (
+          <View
+            className="mt-5 rounded-xl p-4"
+            style={{
+              backgroundColor: "#faf6ee",
+              borderWidth: 1,
+              borderColor: "#e3d9c0",
+            }}
+          >
+            <Text
+              className="text-[10px] uppercase"
+              style={{
+                fontFamily: "DMMono-Medium",
+                letterSpacing: 1.6,
+                color: "#8a5821",
+              }}
+            >
+              Hearing saved — notify {item.clientName || "the client"}
+            </Text>
+            <View className="mt-3 flex-row gap-2">
+              <CallPill
+                c={item}
+                hasNumber={Boolean(item.clientPhone || item.clientWhatsapp)}
+              />
+              <WhatsAppPill
+                c={item}
+                officeName={officeName}
+                template={template}
+                hasNumber={Boolean(item.clientWhatsapp || item.clientPhone)}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {hasSaved ? (
+          <Pressable
+            onPress={onDone}
+            className="mt-3 rounded-xl items-center justify-center flex-row gap-2 active:opacity-85"
+            style={{
+              paddingVertical: 13,
+              backgroundColor: "#c5853a",
+              shadowColor: "#c5853a",
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Done with this matter"
+          >
+            <Text
+              className="text-[13px]"
+              style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
+            >
+              Done
+            </Text>
+            <Feather name="arrow-right" size={14} color="#2a1c08" />
+          </Pressable>
+        ) : null}
         <View style={{ height: 16 }} />
       </View>
     </Sheet>
@@ -668,15 +854,17 @@ function Segmented({
 
 function ScheduledRow({
   c,
-  bucket,
   officeName,
   template,
+  saved,
   onUpdate,
 }: {
   c: PartnerHearingItem;
-  bucket: HearingBucket;
   officeName: string;
   template: string;
+  // This matter's hearing was updated in this session and the list hasn't
+  // been refetched yet — the row already shows the new date and status.
+  saved: boolean;
   onUpdate: () => void;
 }) {
   const router = useRouter();
@@ -709,6 +897,23 @@ function ScheduledRow({
           >
             {c.caseNo}
           </Text>
+          {saved ? (
+            <View
+              className="rounded-md px-1.5 py-0.5"
+              style={{ backgroundColor: "#c5853a" }}
+            >
+              <Text
+                className="text-[9px] uppercase"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  letterSpacing: 1.2,
+                  color: "#2a1c08",
+                }}
+              >
+                Updated
+              </Text>
+            </View>
+          ) : null}
           {c.status ? (
             <View
               className="rounded-md px-1.5 py-0.5"
@@ -779,7 +984,6 @@ function ScheduledRow({
         <CallButton c={c} hasNumber={hasPhone} />
         <WhatsAppButton
           c={c}
-          bucket={bucket}
           officeName={officeName}
           template={template}
           hasNumber={hasWa}
@@ -831,19 +1035,22 @@ function PendingCard({
   c,
   officeName,
   template,
-  onUpdated,
+  saved,
+  onSaved,
+  onDone,
 }: {
   c: PartnerHearingItem;
   officeName: string;
   template: string;
-  onUpdated: () => void;
+  saved: boolean;
+  onSaved: (patch: SavedPatch) => void;
+  onDone: () => void;
 }) {
   const router = useRouter();
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedFlash, setSavedFlash] = useState(false);
 
   const hasPhone = Boolean(c.clientPhone || c.clientWhatsapp);
   const hasWa = Boolean(c.clientWhatsapp || c.clientPhone);
@@ -861,9 +1068,11 @@ function PendingCard({
       };
       // Blank status keeps the matter's current status; a typed status applies.
       if (status.trim()) payload.status = status.trim();
-      await partnerUpdateCase(c.id, payload);
-      setSavedFlash(true);
-      setTimeout(() => onUpdated(), 350);
+      const res = await partnerUpdateCase(c.id, payload);
+      // The card stays on screen carrying what was just saved, so the
+      // WhatsApp button below quotes the new date immediately. Done is
+      // what refetches and lets the matter leave Pending.
+      onSaved(patchFromSavedCase(c, res.case ?? null));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't update");
     } finally {
@@ -880,7 +1089,6 @@ function PendingCard({
         shadowRadius: 10,
         shadowOffset: { width: 0, height: 2 },
         elevation: 2,
-        opacity: savedFlash ? 0.55 : 1,
       }}
     >
       {/* Title row */}
@@ -945,17 +1153,17 @@ function PendingCard({
         </Pressable>
         <View
           className="rounded-md px-2 py-1"
-          style={{ backgroundColor: "#c5853a" }}
+          style={{ backgroundColor: saved ? "#d2e6e7" : "#c5853a" }}
         >
           <Text
             className="text-[9px] font-semibold uppercase"
             style={{
               fontFamily: "DMMono-Medium",
               letterSpacing: 1.5,
-              color: "#2a1c08",
+              color: saved ? "#2f6b70" : "#2a1c08",
             }}
           >
-            Pending date
+            {saved ? "Updated" : "Pending date"}
           </Text>
         </View>
       </View>
@@ -1003,23 +1211,53 @@ function PendingCard({
               className="text-[13px] font-semibold"
               style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
             >
-              {savedFlash ? "Updated ✓" : "Update"}
+              {saved ? "Saved ✓ · update again" : "Update"}
             </Text>
           )}
         </Pressable>
       </View>
 
-      {/* Contact buttons */}
-      <View className="mt-4 flex-row gap-2">
+      {/* Contact buttons — after a save these quote the NEW date, because
+          the card is rendering the saved record. */}
+      {saved ? (
+        <Text
+          className="mt-4 text-[10px] uppercase"
+          style={{
+            fontFamily: "DMMono-Medium",
+            letterSpacing: 1.6,
+            color: "#8a5821",
+          }}
+        >
+          Hearing saved — notify {c.clientName || "the client"}
+        </Text>
+      ) : null}
+      <View className={saved ? "mt-2 flex-row gap-2" : "mt-4 flex-row gap-2"}>
         <CallPill c={c} hasNumber={hasPhone} />
         <WhatsAppPill
           c={c}
-          bucket="pending"
           officeName={officeName}
           template={template}
           hasNumber={hasWa}
         />
       </View>
+
+      {saved ? (
+        <Pressable
+          onPress={onDone}
+          className="mt-3 rounded-md py-3 items-center justify-center flex-row gap-2 active:opacity-85"
+          style={{ backgroundColor: "#0a1124" }}
+          accessibilityRole="button"
+          accessibilityLabel="Done with this matter"
+        >
+          <Text
+            className="text-[13px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+          >
+            Done
+          </Text>
+          <Feather name="arrow-right" size={14} color="#f5ebd6" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -1053,20 +1291,18 @@ function CallButton({
 
 function WhatsAppButton({
   c,
-  bucket,
   officeName,
   template,
   hasNumber,
 }: {
   c: PartnerHearingItem;
-  bucket: HearingBucket;
   officeName: string;
   template: string;
   hasNumber: boolean;
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, bucket, officeName, template, hasNumber)}
+      onPress={() => openWhatsApp(c, officeName, template, hasNumber)}
       className="h-10 w-10 rounded-full items-center justify-center active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1115,20 +1351,18 @@ function CallPill({
 
 function WhatsAppPill({
   c,
-  bucket,
   officeName,
   template,
   hasNumber,
 }: {
   c: PartnerHearingItem;
-  bucket: HearingBucket;
   officeName: string;
   template: string;
   hasNumber: boolean;
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, bucket, officeName, template, hasNumber)}
+      onPress={() => openWhatsApp(c, officeName, template, hasNumber)}
       className="flex-1 rounded-md py-2.5 items-center justify-center flex-row gap-2 active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1176,7 +1410,6 @@ async function callClient(c: PartnerHearingItem, hasNumber: boolean) {
 
 async function openWhatsApp(
   c: PartnerHearingItem,
-  bucket: HearingBucket,
   officeName: string,
   template: string,
   hasNumber: boolean

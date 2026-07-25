@@ -1627,6 +1627,9 @@ export type ChatMessageDTO = {
   editedAt: string | null;
   createdAt: string;
   isMine: boolean;
+  // Delivery/read state on YOUR OWN messages; null on everyone else's.
+  // Absent on older servers, which simply means no tick is drawn.
+  receipt?: "sent" | "delivered" | "read" | null;
 };
 
 export const CHAT_MAX_BODY = 4000;

@@ -39,11 +39,16 @@ const REJECT_LABEL: Record<RejectedFile["reason"], string> = {
 
 export default function AttachDocumentsSheet({
   visible,
+  initialSource = null,
   onClose,
   caseId,
   onUploaded,
 }: {
   visible: boolean;
+  // Where the Upload dropdown said the papers are coming from. The matching
+  // picker fires as soon as the sheet opens, so choosing a source and then
+  // choosing it again inside the sheet is not two steps.
+  initialSource?: "files" | "library" | "camera" | null;
   onClose: () => void;
   caseId: string;
   onUploaded: () => void;
@@ -56,15 +61,18 @@ export default function AttachDocumentsSheet({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (visible) {
-      setStaged([]);
-      setRejected([]);
-      setUploading(false);
-      setServerErrors([]);
-      setNote(null);
-      setError(null);
-    }
-  }, [visible]);
+    if (!visible) return;
+    setStaged([]);
+    setRejected([]);
+    setUploading(false);
+    setServerErrors([]);
+    setNote(null);
+    setError(null);
+    if (initialSource) void pick(initialSource);
+    // pick() is stable for this purpose and re-running on every render
+    // would re-open the picker; the sheet opening is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialSource]);
 
   async function pick(source: "files" | "library" | "camera") {
     setError(null);
@@ -133,7 +141,7 @@ export default function AttachDocumentsSheet({
       visible={visible}
       onClose={uploading ? () => {} : onClose}
       eyebrow="Briefcase"
-      title="Attach documents"
+      title="Upload documents"
       showClose={!uploading}
       containerStyle={{ maxHeight: "88%" }}
     >
