@@ -7,21 +7,30 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
   Linking,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
+import { ApiError, partnerCreateSupportTicket } from "../../lib/api";
 
-// Support hub reachable from the bottom of the More menu: a quick tutorial plus
-// an issue-report form that opens the device mail app to the support address
-// with the advocate's name, company, phone and the issue pre-filled.
+// Support hub reachable from the bottom of the More menu: a quick tutorial
+// plus an issue-report form. The form raises a real support ticket in the
+// backend (Global-Admin support inbox), rather than only opening the mail
+// app — so nothing is lost if the device has no mail client set up. The
+// support address is still shown for anyone who prefers email.
 const SUPPORT_EMAIL = "ksnagendhran@gmail.com";
 
-const TUTORIAL: { icon: keyof typeof Feather.glyphMap; title: string; body: string }[] = [
+const CATEGORIES = ["Bug", "Question", "Feature request", "Billing", "Other"];
+
+const TUTORIAL: {
+  icon: keyof typeof Feather.glyphMap;
+  title: string;
+  body: string;
+}[] = [
   {
     icon: "calendar",
     title: "Hearing Track",
@@ -46,38 +55,46 @@ const TUTORIAL: { icon: keyof typeof Feather.glyphMap; title: string; body: stri
 
 export default function Support() {
   const router = useRouter();
-  const { user, partner } = useAuth();
+  const { user } = useAuth();
 
-  const [name, setName] = useState(
-    `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()
-  );
-  const [company, setCompany] = useState(partner?.name ?? "");
+  const [category, setCategory] = useState("Bug");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
   const [phone, setPhone] = useState("");
-  const [issue, setIssue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function sendIssue() {
-    if (!issue.trim()) {
-      Alert.alert(
-        "Describe the issue",
-        "Tell us what went wrong so we can help."
-      );
+  const reporter = `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
+
+  async function submit() {
+    setError(null);
+    if (message.trim().length < 5) {
+      setError("Please describe the issue in a little more detail.");
       return;
     }
-    const body =
-      `Name: ${name || "—"}\n` +
-      `Company: ${company || "—"}\n` +
-      `Phone: ${phone || "—"}\n\n` +
-      `Issue:\n${issue.trim()}\n`;
-    const url =
-      `mailto:${SUPPORT_EMAIL}` +
-      `?subject=${encodeURIComponent(`Legalezi support — ${name || "issue"}`)}` +
-      `&body=${encodeURIComponent(body)}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert(
-        "No mail app",
-        `Email us at ${SUPPORT_EMAIL} with your name, company, phone and the issue.`
-      )
-    );
+    setSubmitting(true);
+    try {
+      await partnerCreateSupportTicket({
+        subject: subject.trim(),
+        category,
+        message: message.trim(),
+        phone: phone.trim(),
+      });
+      setSent(true);
+      setSubject("");
+      setMessage("");
+      setPhone("");
+      setCategory("Bug");
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't send. Check your connection and try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -183,74 +200,203 @@ export default function Support() {
             >
               Report an issue
             </Text>
-            <View
-              className="rounded-2xl bg-app-paper p-5"
-              style={{
-                gap: 16,
-                shadowColor: "#0a1124",
-                shadowOpacity: 0.04,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 1 },
-                elevation: 1,
-              }}
-            >
-              <SupportField
-                label="Name"
-                value={name}
-                onChangeText={setName}
-                placeholder="Your name"
-              />
-              <SupportField
-                label="Company name"
-                value={company}
-                onChangeText={setCompany}
-                placeholder="Your office / firm"
-              />
-              <SupportField
-                label="Phone"
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="Contact number"
-                keyboardType="phone-pad"
-              />
-              <SupportField
-                label="Issue"
-                value={issue}
-                onChangeText={setIssue}
-                placeholder="What went wrong? Steps, the screen, anything that helps."
-                multiline
-              />
 
-              <Pressable
-                onPress={sendIssue}
-                className="rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+            {sent ? (
+              <View
+                className="rounded-2xl bg-app-paper p-5 items-center"
                 style={{
-                  backgroundColor: "#c5853a",
-                  paddingVertical: 14,
-                  shadowColor: "#c5853a",
-                  shadowOpacity: 0.3,
-                  shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 3,
+                  shadowColor: "#0a1124",
+                  shadowOpacity: 0.04,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 1,
                 }}
-                accessibilityRole="button"
-                accessibilityLabel="Send issue report by email"
               >
-                <Feather name="mail" size={15} color="#2a1c08" />
-                <Text
-                  className="text-[13.5px]"
-                  style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
+                <View
+                  className="h-12 w-12 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "#d2e6e7" }}
                 >
-                  Send to support
+                  <Feather name="check" size={22} color="#3f9a8c" />
+                </View>
+                <Text
+                  className="mt-3 text-[16px] text-app-ink"
+                  style={{ fontFamily: "Crimson-SemiBold" }}
+                >
+                  Thanks — we&rsquo;ve got it.
                 </Text>
-              </Pressable>
-              <Text
-                className="text-[11px] text-app-fg-muted text-center"
-                style={{ fontFamily: "Manrope" }}
+                <Text
+                  className="mt-1 text-[12.5px] text-app-fg-muted text-center"
+                  style={{ fontFamily: "Manrope", lineHeight: 18 }}
+                >
+                  Your issue is with the Legalezi team. We&rsquo;ll be in touch
+                  if we need more detail.
+                </Text>
+                <Pressable
+                  onPress={() => setSent(false)}
+                  className="mt-4 rounded-xl px-4 py-2.5 active:opacity-80"
+                  style={{ backgroundColor: "#efe5d0" }}
+                >
+                  <Text
+                    className="text-[12.5px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+                  >
+                    Report another
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View
+                className="rounded-2xl bg-app-paper p-5"
+                style={{
+                  gap: 16,
+                  shadowColor: "#0a1124",
+                  shadowOpacity: 0.04,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 1,
+                }}
               >
-                Opens your mail app to {SUPPORT_EMAIL}
-              </Text>
-            </View>
+                {/* Category */}
+                <View>
+                  <Text
+                    className="text-[11px] uppercase mb-2"
+                    style={{
+                      fontFamily: "DMMono-Medium",
+                      letterSpacing: 1.2,
+                      color: "#8a5821",
+                    }}
+                  >
+                    Category
+                  </Text>
+                  <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                    {CATEGORIES.map((c) => {
+                      const on = category === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          onPress={() => setCategory(c)}
+                          className="rounded-full px-3 py-1.5 active:opacity-70"
+                          style={{
+                            backgroundColor: on ? "#0a1124" : "#faf6ee",
+                            borderWidth: 1,
+                            borderColor: on ? "#0a1124" : "#e3d9c0",
+                          }}
+                        >
+                          <Text
+                            className="text-[12px]"
+                            style={{
+                              fontFamily: on ? "Manrope-SemiBold" : "Manrope",
+                              color: on ? "#f5ebd6" : "#0a1124",
+                            }}
+                          >
+                            {c}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <SupportField
+                  label="Subject (optional)"
+                  value={subject}
+                  onChangeText={setSubject}
+                  placeholder="A short summary"
+                />
+                <SupportField
+                  label="What went wrong?"
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Steps, the screen, anything that helps."
+                  multiline
+                />
+                <SupportField
+                  label="Phone (optional)"
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="If you'd like a call back"
+                  keyboardType="phone-pad"
+                />
+
+                {reporter ? (
+                  <Text
+                    className="text-[11px] text-app-fg-muted"
+                    style={{ fontFamily: "Manrope" }}
+                  >
+                    Reporting as{" "}
+                    <Text style={{ fontFamily: "Manrope-SemiBold" }}>
+                      {reporter}
+                    </Text>
+                    {user?.email ? ` · ${user.email}` : ""}
+                  </Text>
+                ) : null}
+
+                {error ? (
+                  <Text
+                    className="text-[12px]"
+                    style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                  >
+                    {error}
+                  </Text>
+                ) : null}
+
+                <Pressable
+                  onPress={submit}
+                  disabled={submitting}
+                  className="rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+                  style={{
+                    backgroundColor: "#c5853a",
+                    paddingVertical: 14,
+                    opacity: submitting ? 0.7 : 1,
+                    shadowColor: "#c5853a",
+                    shadowOpacity: 0.3,
+                    shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 3,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send issue report"
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#2a1c08" />
+                  ) : (
+                    <Feather name="send" size={15} color="#2a1c08" />
+                  )}
+                  <Text
+                    className="text-[13.5px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
+                  >
+                    {submitting ? "Sending…" : "Send to support"}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() =>
+                    Linking.openURL(
+                      `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+                        "Legalezi support"
+                      )}`
+                    ).catch(() => undefined)
+                  }
+                  hitSlop={6}
+                >
+                  <Text
+                    className="text-[11px] text-app-fg-muted text-center"
+                    style={{ fontFamily: "Manrope" }}
+                  >
+                    or email us at{" "}
+                    <Text
+                      style={{
+                        fontFamily: "Manrope-SemiBold",
+                        color: "#8a5821",
+                      }}
+                    >
+                      {SUPPORT_EMAIL}
+                    </Text>
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
