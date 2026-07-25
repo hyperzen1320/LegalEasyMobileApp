@@ -203,6 +203,8 @@ export function useChatRoom(roomId: string | null): State & {
         editedAt: null,
         createdAt: new Date().toISOString(),
         isMine: true,
+        // Not on the server yet, so not even one tick.
+        receipt: null,
       };
       setMessages((prev) => [...prev, optimistic]);
       setSending(true);
