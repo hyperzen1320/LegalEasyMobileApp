@@ -144,6 +144,7 @@ export default function HomeLayout() {
       <Tabs.Screen name="attendance" options={{ href: null }} />
       <Tabs.Screen name="support" options={{ href: null }} />
       <Tabs.Screen name="tools" options={{ href: null }} />
+      <Tabs.Screen name="tutorials" options={{ href: null }} />
     </Tabs>
   );
 }

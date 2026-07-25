@@ -1,5 +1,9 @@
 import { File, Directory, Paths } from "expo-file-system";
+// The ONE thing the SDK 54 object API doesn't do: hand Android a
+// content:// URI. Needed to open a file for viewing (see openFile below).
+import { getContentUriAsync } from "expo-file-system/legacy";
 import { fetch as expoFetch } from "expo/fetch";
+import * as IntentLauncher from "expo-intent-launcher";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import * as DocumentPicker from "expo-document-picker";
@@ -20,7 +24,8 @@ import {
 // — if those change, change these together.
 //
 // expo-file-system here is the SDK 54 object API (File/Directory/Paths).
-// The legacy API (expo-file-system/legacy) is intentionally unused.
+// The legacy API is used for exactly one call — getContentUriAsync, which
+// the object API has no replacement for — and nothing else.
 
 export const MAX_DOC_BYTES = 25 * 1024 * 1024;
 export const MAX_DOC_LABEL = "25 MB";
@@ -310,7 +315,46 @@ function mapNativeDownloadError(err: unknown, base: string): FileOpError {
   );
 }
 
-/* ─────────── Share / save / print ─────────── */
+/* ─────────── View / share / save / print ─────────── */
+
+/**
+ * Opens a downloaded file for READING, without offering to send it
+ * anywhere. This is the only file action a non-admin gets in the case
+ * briefcase and in Senior Desk — they can read the paper, they can't
+ * take it out of the office.
+ *
+ * Android hands the file to whatever app claims to view that MIME type
+ * (ACTION_VIEW). It needs a content:// URI — Android's StrictMode throws
+ * FileUriExposedException on a raw file:// — which is the one thing the
+ * legacy FileSystem API still does that the SDK 54 object API doesn't,
+ * hence the narrow legacy import here.
+ *
+ * iOS has no equivalent "view with" intent exposed to Expo; Quick Look
+ * sits at the top of the share sheet, so that's the closest honest
+ * equivalent there.
+ */
+export async function openFile(uri: string, mime: string): Promise<void> {
+  if (Platform.OS === "android") {
+    try {
+      const contentUri = await getContentUriAsync(uri);
+      await IntentLauncher.startActivityAsync(
+        "android.intent.action.VIEW",
+        {
+          data: contentUri,
+          type: mime || "*/*",
+          // FLAG_GRANT_READ_URI_PERMISSION — without it the receiving app
+          // can't read the file we just handed it.
+          flags: 1,
+        }
+      );
+      return;
+    } catch {
+      // No app claims this type (or the intent bounced) — fall through to
+      // the share sheet, which at least lists "Open with" targets.
+    }
+  }
+  await shareFile(uri, mime);
+}
 
 export async function shareFile(
   uri: string,

@@ -314,6 +314,29 @@ export async function partnerCreateSupportTicket(payload: {
   });
 }
 
+/* ─────────── Tutorials (global-admin-managed media) ─────────── */
+export type TutorialMedia = {
+  id: string;
+  title: string;
+  description: string;
+  kind: "video" | "image" | "pdf";
+  size: number;
+  contentType: string;
+};
+
+export async function partnerListTutorials(): Promise<{
+  tutorials: TutorialMedia[];
+}> {
+  return api<{ tutorials: TutorialMedia[] }>("/api/mobile/tutorials");
+}
+
+// Absolute URL of a tutorial's binary — fed to the video player / <Image>
+// with an Authorization header (see getAuthHeader). The endpoint supports
+// HTTP range requests so the player can seek.
+export function tutorialFileUrl(id: string): string {
+  return `${getApiBaseUrl()}/api/mobile/tutorials/${id}/file`;
+}
+
 /* ─────────── Password reset (emailed one-time code) ───────────
    Three unauthenticated calls, shared verbatim with the web app:
 
@@ -1640,6 +1663,9 @@ export type ChatMessageDTO = {
   editedAt: string | null;
   createdAt: string;
   isMine: boolean;
+  // Delivery/read state on YOUR OWN messages; null on everyone else's.
+  // Absent on older servers, which simply means no tick is drawn.
+  receipt?: "sent" | "delivered" | "read" | null;
 };
 
 export const CHAT_MAX_BODY = 4000;

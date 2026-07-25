@@ -25,25 +25,36 @@ import {
 } from "../../lib/api";
 import {
   downloadAuthorized,
+  openFile,
   printFile,
   saveToDevice,
   shareFile,
   type DownloadedFile,
 } from "../../lib/files";
 import { formatBytes } from "../../lib/exports";
+import { useAuth } from "../../lib/auth-context";
 
-// The case's briefcase — list, attach, preview, share/save/print and
-// delete for GridFS-stored documents. Every member can view and attach;
-// delete follows the office's smart-delete rule (admins direct, everyone
-// else through a delete request — same flow as cases and boards).
+// The case's briefcase — list, upload, view, and (for the office admin)
+// share / save / print / delete of GridFS-stored documents.
+//
+// Everyone in chambers can add papers and read them. Taking one OUT of
+// the office — sharing it, saving it to the phone, printing it — and
+// removing one are the admin's calls. The server enforces the same line
+// (403 on ?download=1 and on DELETE for non-admins), so hiding the
+// buttons is the courtesy, not the control.
 
 export default function DocumentsPanel({ caseId }: { caseId: string }) {
+  const { isPartnerAdmin } = useAuth();
   const [docs, setDocs] = useState<CaseDocumentDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  // Which picker the Upload menu should open the attach sheet with.
+  const [uploadMenu, setUploadMenu] = useState(false);
+  const [uploadSource, setUploadSource] =
+    useState<"files" | "library" | "camera" | null>(null);
   const [active, setActive] = useState<CaseDocumentDTO | null>(null);
   const [busy, setBusy] = useState<
-    null | "preview" | "share" | "save" | "print" | "delete"
+    null | "preview" | "view" | "share" | "save" | "print" | "delete"
   >(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [requestTarget, setRequestTarget] =
@@ -87,7 +98,9 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
     return file;
   }
 
-  async function act(action: "preview" | "share" | "save" | "print") {
+  async function act(
+    action: "preview" | "view" | "share" | "save" | "print"
+  ) {
     if (!active || busy) return;
     setBusy(action);
     setActionError(null);
@@ -95,6 +108,10 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
       const file = await ensureLocal(active);
       if (action === "preview") {
         setPreview({ doc: active, file });
+        setActive(null);
+      } else if (action === "view") {
+        // Read-only: hands the paper to a viewer, never to a send target.
+        await openFile(file.uri, file.mime);
         setActive(null);
       } else if (action === "share") {
         await shareFile(file.uri, file.mime, active.filename);
@@ -183,19 +200,20 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
           </View>
         </View>
         <Pressable
-          onPress={() => setAttachOpen(true)}
+          onPress={() => setUploadMenu(true)}
           className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
           style={{ backgroundColor: "#c5853a" }}
           accessibilityRole="button"
-          accessibilityLabel="Attach documents"
+          accessibilityLabel="Upload documents"
         >
-          <Feather name="paperclip" size={13} color="#2a1c08" />
+          <Feather name="upload" size={13} color="#2a1c08" />
           <Text
             className="text-[12px]"
             style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
           >
-            Attach
+            Upload
           </Text>
+          <Feather name="chevron-down" size={13} color="#2a1c08" />
         </Pressable>
       </View>
 
@@ -291,10 +309,51 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
       {/* Attach flow */}
       <AttachDocumentsSheet
         visible={attachOpen}
-        onClose={() => setAttachOpen(false)}
+        initialSource={uploadSource}
+        onClose={() => {
+          setAttachOpen(false);
+          setUploadSource(null);
+        }}
         caseId={caseId}
         onUploaded={load}
       />
+
+      {/* Upload ▾ — pick where the papers come from, then the staging
+          sheet opens with that picker already running. */}
+      <Sheet
+        visible={uploadMenu}
+        onClose={() => setUploadMenu(false)}
+        eyebrow="Briefcase"
+        title="Upload documents"
+      >
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 6,
+            paddingBottom: 20,
+            gap: 10,
+          }}
+        >
+          {(
+            [
+              { key: "files", icon: "file", label: "Files on this device" },
+              { key: "library", icon: "image", label: "Photo library" },
+              { key: "camera", icon: "camera", label: "Take a photo" },
+            ] as const
+          ).map((o) => (
+            <DocAction
+              key={o.key}
+              icon={o.icon}
+              label={o.label}
+              onPress={() => {
+                setUploadMenu(false);
+                setUploadSource(o.key);
+                setAttachOpen(true);
+              }}
+            />
+          ))}
+        </View>
+      </Sheet>
 
       {/* Per-document actions */}
       <Sheet
@@ -320,45 +379,69 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
           ) : null}
 
           <View className="gap-2.5">
+            {/* View is everyone's. Images open in the in-app viewer;
+                anything else is handed to a system viewer. */}
             {active && active.contentType.startsWith("image/") ? (
               <DocAction
                 icon="eye"
-                label="Preview"
+                label="View"
                 busy={busy === "preview"}
                 onPress={() => act("preview")}
                 primary
               />
-            ) : null}
-            <DocAction
-              icon="share-2"
-              label="Share"
-              busy={busy === "share"}
-              onPress={() => act("share")}
-              primary={!active?.contentType.startsWith("image/")}
-            />
-            <DocAction
-              icon="folder"
-              label="Save to device"
-              busy={busy === "save"}
-              onPress={() => act("save")}
-            />
-            {active &&
-            (active.contentType === "application/pdf" ||
-              active.contentType.startsWith("image/")) ? (
+            ) : (
               <DocAction
-                icon="printer"
-                label="Print"
-                busy={busy === "print"}
-                onPress={() => act("print")}
+                icon="eye"
+                label="View"
+                busy={busy === "view"}
+                onPress={() => act("view")}
+                primary
               />
-            ) : null}
-            <DocAction
-              icon="trash-2"
-              label="Remove from case"
-              busy={busy === "delete"}
-              onPress={confirmDelete}
-              danger
-            />
+            )}
+
+            {/* Everything that takes the paper out of the office is the
+                office admin's call. The API says the same thing. */}
+            {isPartnerAdmin ? (
+              <>
+                <DocAction
+                  icon="share-2"
+                  label="Share"
+                  busy={busy === "share"}
+                  onPress={() => act("share")}
+                />
+                <DocAction
+                  icon="folder"
+                  label="Save to device"
+                  busy={busy === "save"}
+                  onPress={() => act("save")}
+                />
+                {active &&
+                (active.contentType === "application/pdf" ||
+                  active.contentType.startsWith("image/")) ? (
+                  <DocAction
+                    icon="printer"
+                    label="Print"
+                    busy={busy === "print"}
+                    onPress={() => act("print")}
+                  />
+                ) : null}
+                <DocAction
+                  icon="trash-2"
+                  label="Remove from case"
+                  busy={busy === "delete"}
+                  onPress={confirmDelete}
+                  danger
+                />
+              </>
+            ) : (
+              <Text
+                className="text-[11.5px] text-app-fg-muted"
+                style={{ fontFamily: "Manrope", lineHeight: 17 }}
+              >
+                Sharing, saving and removing papers are the office admin&rsquo;s
+                to do.
+              </Text>
+            )}
           </View>
           <View style={{ height: 16 }} />
         </View>
@@ -395,6 +478,7 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
       {/* Full-screen image preview */}
       <ImagePreview
         item={preview}
+        canShare={isPartnerAdmin}
         onClose={() => setPreview(null)}
         onShare={async () => {
           if (!preview) return;
@@ -470,10 +554,13 @@ function DocAction({
 
 function ImagePreview({
   item,
+  canShare,
   onClose,
   onShare,
 }: {
   item: { doc: CaseDocumentDTO; file: DownloadedFile } | null;
+  // Sharing out of the office is admin-only; everyone else just looks.
+  canShare: boolean;
   onClose: () => void;
   onShare: () => void;
 }) {
@@ -506,15 +593,19 @@ function ImagePreview({
           >
             {item?.doc.filename ?? ""}
           </Text>
-          <Pressable
-            onPress={onShare}
-            hitSlop={10}
-            className="h-9 w-9 items-center justify-center rounded-md active:opacity-60"
-            style={{ backgroundColor: "rgba(245,235,214,0.12)" }}
-            accessibilityLabel="Share image"
-          >
-            <Feather name="share-2" size={16} color="#f5ebd6" />
-          </Pressable>
+          {canShare ? (
+            <Pressable
+              onPress={onShare}
+              hitSlop={10}
+              className="h-9 w-9 items-center justify-center rounded-md active:opacity-60"
+              style={{ backgroundColor: "rgba(245,235,214,0.12)" }}
+              accessibilityLabel="Share image"
+            >
+              <Feather name="share-2" size={16} color="#f5ebd6" />
+            </Pressable>
+          ) : (
+            <View style={{ width: 36 }} />
+          )}
         </View>
         {item ? (
           <Image
