@@ -79,7 +79,7 @@ export default function HomeLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          tabBarLabel: "Home",
+          tabBarLabel: "Dashboard",
           tabBarIcon: ({ color }) => (
             <Feather name="grid" size={20} color={color} />
           ),
