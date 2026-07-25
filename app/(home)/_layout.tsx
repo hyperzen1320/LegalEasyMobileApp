@@ -5,14 +5,23 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
+import { isFeatureEnabled } from "../../lib/features";
 
 export default function HomeLayout() {
   const router = useRouter();
-  const { status, isGlobalAdmin } = useAuth();
+  const { status, isGlobalAdmin, features } = useAuth();
   // Senior Desk unread total rides on the More tab (web puts it on the
   // sidebar item). The singleton polls every 12s while the app is open.
   const { unread } = useChatUnread();
   const insets = useSafeAreaInsets();
+
+  // Modules the global admin has switched off for this chambers lose
+  // their tab. `href: null` keeps the route registered (so a stray
+  // navigation still resolves) while taking it out of the bar — the same
+  // treatment the non-tab screens below already get. The API 403s these
+  // regardless, so this is about not showing a door that doesn't open.
+  const showCases = isFeatureEnabled(features, "cases");
+  const showHearings = isFeatureEnabled(features, "hearings");
 
   // Two redirects this layout enforces:
   //  - no session → back to signin
@@ -87,21 +96,29 @@ export default function HomeLayout() {
       />
       <Tabs.Screen
         name="cases"
-        options={{
-          tabBarLabel: "Cases",
-          tabBarIcon: ({ color }) => (
-            <Feather name="briefcase" size={20} color={color} />
-          ),
-        }}
+        options={
+          showCases
+            ? {
+                tabBarLabel: "Cases",
+                tabBarIcon: ({ color }) => (
+                  <Feather name="briefcase" size={20} color={color} />
+                ),
+              }
+            : { href: null }
+        }
       />
       <Tabs.Screen
         name="hearings"
-        options={{
-          tabBarLabel: "Hearings",
-          tabBarIcon: ({ color }) => (
-            <Feather name="calendar" size={20} color={color} />
-          ),
-        }}
+        options={
+          showHearings
+            ? {
+                tabBarLabel: "Hearings",
+                tabBarIcon: ({ color }) => (
+                  <Feather name="calendar" size={20} color={color} />
+                ),
+              }
+            : { href: null }
+        }
       />
       <Tabs.Screen
         name="more"
