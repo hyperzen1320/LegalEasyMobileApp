@@ -45,6 +45,11 @@ export default function Workflow() {
   const [settingsFor, setSettingsFor] = useState<PartnerBoard | null>(null);
   const [requestTarget, setRequestTarget] =
     useState<DeleteRequestRequiredError | null>(null);
+  // Filter / sort controls sitting beside the search box.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterColor, setFilterColor] = useState<BoardColor | null>(null);
+  const [withCardsOnly, setWithCardsOnly] = useState(false);
+  const [sort, setSort] = useState<"recent" | "az">("recent");
 
   const load = useCallback(async () => {
     try {
@@ -77,13 +82,28 @@ export default function Workflow() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return boards;
-    return boards.filter(
-      (b) =>
-        b.title.toLowerCase().includes(q) ||
-        (b.description || "").toLowerCase().includes(q)
-    );
-  }, [boards, query]);
+    let list = boards;
+    if (q) {
+      list = list.filter(
+        (b) =>
+          b.title.toLowerCase().includes(q) ||
+          (b.description || "").toLowerCase().includes(q)
+      );
+    }
+    if (filterColor) list = list.filter((b) => b.color === filterColor);
+    if (withCardsOnly) list = list.filter((b) => b.cardCount > 0);
+    const out = [...list];
+    if (sort === "az") {
+      out.sort((a, b) => a.title.localeCompare(b.title));
+    } else {
+      // "recent" — most recently touched board first.
+      out.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    }
+    return out;
+  }, [boards, query, filterColor, withCardsOnly, sort]);
+
+  const activeFilterCount =
+    (filterColor ? 1 : 0) + (withCardsOnly ? 1 : 0) + (sort === "az" ? 1 : 0);
 
   return (
     <View className="flex-1 bg-app-canvas">
@@ -91,10 +111,10 @@ export default function Workflow() {
       <SafeAreaView className="flex-1" edges={["top"]}>
         <TopBar count={boards.length} onCreate={() => setCreating(true)} />
 
-        {/* Search */}
-        <View className="px-5 pt-3 pb-1 bg-app-canvas">
+        {/* Search + filter */}
+        <View className="px-5 pt-3 pb-1 bg-app-canvas flex-row items-center gap-2">
           <View
-            className="flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
+            className="flex-1 flex-row items-center gap-2 rounded-xl bg-app-paper px-3.5 py-2.5"
             style={{
               shadowColor: "#0a1124",
               shadowOpacity: 0.04,
@@ -124,6 +144,55 @@ export default function Workflow() {
               </Pressable>
             ) : null}
           </View>
+          <Pressable
+            onPress={() => setFilterOpen(true)}
+            className="items-center justify-center rounded-xl bg-app-paper active:opacity-80"
+            style={{
+              width: 44,
+              height: 44,
+              shadowColor: "#0a1124",
+              shadowOpacity: 0.04,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 1 },
+              elevation: 1,
+              borderWidth: activeFilterCount > 0 ? 1 : 0,
+              borderColor: "#c5853a",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Filter and sort boards"
+          >
+            <Feather
+              name="sliders"
+              size={17}
+              color={activeFilterCount > 0 ? "#c5853a" : "#8a5821"}
+            />
+            {activeFilterCount > 0 ? (
+              <View
+                style={{
+                  position: "absolute",
+                  top: -5,
+                  right: -5,
+                  minWidth: 17,
+                  height: 17,
+                  borderRadius: 9,
+                  backgroundColor: "#c5853a",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: 3,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "DMMono-Medium",
+                    fontSize: 9,
+                    color: "#2a1c08",
+                  }}
+                >
+                  {activeFilterCount}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
 
         {loading ? (
@@ -261,6 +330,17 @@ export default function Workflow() {
           Alert.alert("Sent for review", "The office admin has been notified.");
         }}
       />
+
+      <BoardFilterSheet
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        sort={sort}
+        onSort={setSort}
+        color={filterColor}
+        onColor={setFilterColor}
+        withCardsOnly={withCardsOnly}
+        onWithCardsOnly={setWithCardsOnly}
+      />
     </View>
   );
 }
@@ -345,119 +425,109 @@ function BoardTile({
 }) {
   const styles =
     BOARD_COLOR_STYLES[board.color] ?? BOARD_COLOR_STYLES.copper;
+  const subtitle =
+    board.description ||
+    (board.cardCount > 0
+      ? `${board.cardCount} ${board.cardCount === 1 ? "card" : "cards"}`
+      : "");
 
   return (
     <Pressable
       onPress={onOpen}
-      className="rounded-2xl overflow-hidden active:opacity-90"
+      className="flex-row items-center gap-3 rounded-xl bg-app-paper px-3 py-2.5 active:opacity-85"
       style={{
         shadowColor: "#0a1124",
-        shadowOpacity: 0.07,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 3,
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 1 },
+        elevation: 1,
       }}
     >
+      {/* Colour swatch with the board's initial — the Trello-style row mark */}
       <LinearGradient
         colors={styles.gradient as [string, string]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
-          height: 100,
-          padding: 16,
-          position: "relative",
+          width: 42,
+          height: 42,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <View
+        <Text
           style={{
-            position: "absolute",
-            top: 14,
-            left: 14,
-            height: 8,
-            width: 8,
-            borderRadius: 4,
-            backgroundColor: styles.accent,
-            opacity: 0.85,
+            fontFamily: "Crimson-SemiBold",
+            fontSize: 17,
+            color: styles.text,
           }}
-        />
-        {board.cardCount > 0 ? (
-          <View
-            style={{
-              position: "absolute",
-              top: 12,
-              right: 12,
-              backgroundColor: "rgba(255,255,255,0.18)",
-              borderRadius: 6,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: "DMMono-Medium",
-                fontSize: 10,
-                letterSpacing: 1.2,
-                color: styles.text,
-                textTransform: "uppercase",
-              }}
-            >
-              {board.cardCount} cards
-            </Text>
-          </View>
-        ) : null}
+        >
+          {board.title.trim().charAt(0).toUpperCase() || "•"}
+        </Text>
       </LinearGradient>
-      <View
-        className="flex-row items-center justify-between gap-3 px-4 py-3"
-        style={{ backgroundColor: "#ffffff" }}
-      >
-        <View className="flex-1 min-w-0">
+
+      <View className="flex-1 min-w-0">
+        <Text
+          className="text-[15px] font-semibold tracking-tight text-app-ink"
+          style={{ fontFamily: "Crimson-SemiBold" }}
+          numberOfLines={1}
+        >
+          {board.title}
+        </Text>
+        {subtitle ? (
           <Text
-            className="text-[16px] font-semibold tracking-tight text-app-ink"
-            style={{ fontFamily: "Crimson-SemiBold" }}
+            className="mt-0.5 text-[11px] text-app-fg-muted"
+            style={{ fontFamily: "Manrope" }}
             numberOfLines={1}
           >
-            {board.title}
+            {subtitle}
           </Text>
-          {board.description ? (
-            <Text
-              className="mt-0.5 text-[11px] text-app-fg-muted"
-              style={{ fontFamily: "Manrope" }}
-              numberOfLines={1}
-            >
-              {board.description}
-            </Text>
-          ) : null}
-        </View>
-        <Pressable
-          onPress={onSettings}
-          hitSlop={8}
-          className="h-7 w-7 items-center justify-center rounded-md active:opacity-60"
-          style={{ backgroundColor: "#efe5d0" }}
-          accessibilityRole="button"
-          accessibilityLabel={`Settings for ${board.title}`}
-        >
-          <Feather name="more-horizontal" size={14} color="#8a5821" />
-        </Pressable>
-        <View
-          className="h-7 w-7 items-center justify-center rounded-md"
-          style={{ backgroundColor: "#efe5d0" }}
-        >
-          <Feather name="arrow-right" size={13} color="#8a5821" />
-        </View>
+        ) : null}
       </View>
+
+      {board.cardCount > 0 ? (
+        <View
+          className="rounded-md px-2 py-1"
+          style={{ backgroundColor: "#efe5d0" }}
+        >
+          <Text
+            className="text-[10px] uppercase tabular-nums"
+            style={{
+              fontFamily: "DMMono-Medium",
+              letterSpacing: 1,
+              color: "#8a5821",
+            }}
+          >
+            {board.cardCount}
+          </Text>
+        </View>
+      ) : null}
+
+      <Pressable
+        onPress={onSettings}
+        hitSlop={8}
+        className="h-8 w-8 items-center justify-center rounded-md active:opacity-60"
+        style={{ backgroundColor: "#efe5d0" }}
+        accessibilityRole="button"
+        accessibilityLabel={`Settings for ${board.title}`}
+      >
+        <Feather name="more-horizontal" size={14} color="#8a5821" />
+      </Pressable>
+      <Feather name="chevron-right" size={16} color="#c9bfa6" />
     </Pressable>
   );
 }
 
 function TileGap() {
-  return <View style={{ height: 16 }} />;
+  return <View style={{ height: 10 }} />;
 }
 
 function CreateTile({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      className="rounded-2xl items-center justify-center py-7 active:opacity-50"
+      className="flex-row items-center gap-3 rounded-xl px-3 py-2.5 active:opacity-60"
       style={{
         backgroundColor: "#ffffff",
         borderWidth: 1.5,
@@ -466,23 +536,25 @@ function CreateTile({ onPress }: { onPress: () => void }) {
       }}
     >
       <View
-        className="h-11 w-11 items-center justify-center rounded-full"
+        className="h-10 w-10 items-center justify-center rounded-[10px]"
         style={{ backgroundColor: "#efe5d0" }}
       >
-        <Feather name="plus" size={20} color="#8a5821" />
+        <Feather name="plus" size={18} color="#8a5821" />
       </View>
-      <Text
-        className="mt-2 text-[14px] font-semibold tracking-tight text-app-ink"
-        style={{ fontFamily: "Crimson-SemiBold" }}
-      >
-        Create new board
-      </Text>
-      <Text
-        className="mt-1 text-[11px] text-app-fg-muted"
-        style={{ fontFamily: "Manrope" }}
-      >
-        Pick a colour, give it a name
-      </Text>
+      <View className="flex-1">
+        <Text
+          className="text-[14px] font-semibold tracking-tight text-app-ink"
+          style={{ fontFamily: "Crimson-SemiBold" }}
+        >
+          Create new board
+        </Text>
+        <Text
+          className="mt-0.5 text-[11px] text-app-fg-muted"
+          style={{ fontFamily: "Manrope" }}
+        >
+          Pick a colour, give it a name
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -716,5 +788,246 @@ function Field({
         }}
       />
     </View>
+  );
+}
+
+/* ─── Filter / sort sheet ─── */
+
+function BoardFilterSheet({
+  visible,
+  onClose,
+  sort,
+  onSort,
+  color,
+  onColor,
+  withCardsOnly,
+  onWithCardsOnly,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  sort: "recent" | "az";
+  onSort: (s: "recent" | "az") => void;
+  color: BoardColor | null;
+  onColor: (c: BoardColor | null) => void;
+  withCardsOnly: boolean;
+  onWithCardsOnly: (v: boolean) => void;
+}) {
+  const active =
+    (color ? 1 : 0) + (withCardsOnly ? 1 : 0) + (sort === "az" ? 1 : 0);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable
+        onPress={onClose}
+        className="flex-1"
+        style={{
+          backgroundColor: "rgba(10,17,36,0.55)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <View
+          className="rounded-t-3xl bg-app-paper px-5 pt-3 pb-8"
+          style={{
+            shadowColor: "#0a1124",
+            shadowOpacity: 0.2,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: -6 },
+            elevation: 12,
+          }}
+          onStartShouldSetResponder={() => true}
+        >
+          <View
+            className="self-center mb-3 h-1.5 w-12 rounded-full"
+            style={{ backgroundColor: "#e3d9c0" }}
+          />
+          <View className="flex-row items-center justify-between mb-1">
+            <Text
+              className="text-[10px] uppercase text-app-copper-deep"
+              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+            >
+              Filter & sort
+            </Text>
+            {active > 0 ? (
+              <Pressable
+                onPress={() => {
+                  onColor(null);
+                  onWithCardsOnly(false);
+                  onSort("recent");
+                }}
+                hitSlop={8}
+              >
+                <Text
+                  className="text-[11px] uppercase"
+                  style={{
+                    fontFamily: "DMMono-Medium",
+                    letterSpacing: 1.2,
+                    color: "#c5853a",
+                  }}
+                >
+                  Reset
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {/* Sort */}
+          <Text
+            className="text-[10px] uppercase text-app-fg-muted mt-3 mb-2"
+            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.6 }}
+          >
+            Sort
+          </Text>
+          <View className="flex-row" style={{ gap: 8 }}>
+            {(
+              [
+                ["recent", "Recent"],
+                ["az", "A–Z"],
+              ] as const
+            ).map(([key, lbl]) => {
+              const on = sort === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => onSort(key)}
+                  className="rounded-full px-3.5 py-2 active:opacity-70"
+                  style={{
+                    backgroundColor: on ? "#0a1124" : "#ffffff",
+                    borderWidth: 1,
+                    borderColor: on ? "#0a1124" : "#e3d9c0",
+                  }}
+                >
+                  <Text
+                    className="text-[12px]"
+                    style={{
+                      fontFamily: on ? "Manrope-SemiBold" : "Manrope",
+                      color: on ? "#f5ebd6" : "#0a1124",
+                    }}
+                  >
+                    {lbl}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Colour */}
+          <Text
+            className="text-[10px] uppercase text-app-fg-muted mt-5 mb-2"
+            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.6 }}
+          >
+            Colour
+          </Text>
+          <View
+            className="flex-row flex-wrap items-center"
+            style={{ gap: 10 }}
+          >
+            <Pressable
+              onPress={() => onColor(null)}
+              className="rounded-full px-3 py-2 active:opacity-70"
+              style={{
+                backgroundColor: color === null ? "#0a1124" : "#ffffff",
+                borderWidth: 1,
+                borderColor: color === null ? "#0a1124" : "#e3d9c0",
+              }}
+            >
+              <Text
+                className="text-[12px]"
+                style={{
+                  fontFamily:
+                    color === null ? "Manrope-SemiBold" : "Manrope",
+                  color: color === null ? "#f5ebd6" : "#0a1124",
+                }}
+              >
+                All
+              </Text>
+            </Pressable>
+            {BOARD_COLORS.map((c) => {
+              const styles = BOARD_COLOR_STYLES[c];
+              const on = color === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => onColor(on ? null : c)}
+                  className="active:opacity-80"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${c}`}
+                >
+                  <LinearGradient
+                    colors={styles.gradient as [string, string]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{
+                      height: 34,
+                      width: 34,
+                      borderRadius: 9,
+                      borderWidth: on ? 2.5 : 0,
+                      borderColor: on ? "#c5853a" : "transparent",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {on ? (
+                      <Feather name="check" size={15} color={styles.text} />
+                    ) : null}
+                  </LinearGradient>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* With cards only */}
+          <Pressable
+            onPress={() => onWithCardsOnly(!withCardsOnly)}
+            className="mt-5 flex-row items-center gap-2.5 active:opacity-70"
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: withCardsOnly }}
+          >
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 6,
+                borderWidth: 1.5,
+                borderColor: withCardsOnly ? "#c5853a" : "#c9bfa6",
+                backgroundColor: withCardsOnly ? "#c5853a" : "transparent",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {withCardsOnly ? (
+                <Feather name="check" size={14} color="#2a1c08" />
+              ) : null}
+            </View>
+            <Text
+              className="text-[14px] text-app-ink"
+              style={{ fontFamily: "Manrope-Medium" }}
+            >
+              Only boards with cards
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onClose}
+            className="mt-6 rounded-xl items-center justify-center active:opacity-90"
+            style={{ backgroundColor: "#0a1124", paddingVertical: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel="Done"
+          >
+            <Text
+              className="text-[13.5px]"
+              style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+            >
+              Done
+            </Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
   );
 }
