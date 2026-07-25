@@ -38,6 +38,7 @@ import {
   pickImages,
   uploadChatAttachments,
   downloadAuthorized,
+  openFile,
   shareFile,
   extOf,
   FileOpError,
@@ -182,7 +183,13 @@ export default function ChatThread() {
     setActionTarget(m);
   }
 
-  const canModerate = (m: ChatMessageDTO) => m.isMine || isPartnerAdmin;
+  // A message carrying a shared FILE is office property — only the admin
+  // may take it out of everyone's hands. Plain text stays author-
+  // deletable, which is what people expect from a chat. "Delete for me"
+  // is unaffected either way: hiding something from your own thread takes
+  // nothing away from anyone else. The API enforces the same rule.
+  const canModerate = (m: ChatMessageDTO) =>
+    isPartnerAdmin || (m.isMine && (m.attachments?.length ?? 0) === 0);
   const canSend = draft.trim().length > 0 || attachments.length > 0;
 
   return (
@@ -253,6 +260,7 @@ export default function ChatThread() {
                 <MessageRow
                   m={item}
                   prev={room.messages[index - 1]}
+                  isAdmin={isPartnerAdmin}
                   onLongPress={() => openActions(item)}
                   base={base}
                   authHeader={authHeader}
@@ -619,32 +627,42 @@ function SheetAction({
 function MessageRow({
   m,
   prev,
+  isAdmin,
   onLongPress,
   base,
   authHeader,
 }: {
   m: ChatMessageDTO;
   prev?: ChatMessageDTO;
+  isAdmin: boolean;
   onLongPress: () => void;
   base: string;
   authHeader: Record<string, string>;
 }) {
+  // A date stamp opens every new day in the thread — the same anchor
+  // WhatsApp gives you when you scroll back through a week of messages.
+  const dayLabel = startsNewDay(m, prev) ? dayStampFor(m.createdAt) : null;
+
   if (m.type === "system") {
     return (
-      <View className="items-center my-2.5">
-        <Text
-          className="text-[10.5px] text-app-fg-muted text-center"
-          style={{ fontFamily: "DMMono", letterSpacing: 0.5 }}
-        >
-          {m.body}
-        </Text>
-      </View>
+      <>
+        {dayLabel ? <DayStamp label={dayLabel} /> : null}
+        <View className="items-center my-2.5">
+          <Text
+            className="text-[10.5px] text-app-fg-muted text-center"
+            style={{ fontFamily: "DMMono", letterSpacing: 0.5 }}
+          >
+            {m.body}
+          </Text>
+        </View>
+      </>
     );
   }
 
   const mine = m.isMine;
   const pending = m.id.startsWith("tmp-");
   const sameSenderAsPrev =
+    !dayLabel &&
     prev &&
     prev.type === "text" &&
     prev.senderId === m.senderId &&
@@ -659,6 +677,8 @@ function MessageRow({
   const pill = rolePill(m.senderRole || "junior");
 
   return (
+    <>
+      {dayLabel ? <DayStamp label={dayLabel} /> : null}
     <Pressable
       onLongPress={onLongPress}
       delayLongPress={280}
@@ -691,12 +711,6 @@ function MessageRow({
               {pill.label}
             </Text>
           ) : null}
-          <Text
-            className="text-[9px] text-app-fg-muted"
-            style={{ fontFamily: "DMMono", letterSpacing: 0.3 }}
-          >
-            {time}
-          </Text>
         </View>
       ) : null}
 
@@ -746,26 +760,141 @@ function MessageRow({
                 key={a.id}
                 att={a}
                 mine={mine}
+                isAdmin={isAdmin}
                 base={base}
                 authHeader={authHeader}
               />
             ))}
           </View>
         ) : null}
-        {!m.isDeleted && (m.editedAt || pending) ? (
-          <Text
-            className="mt-1 text-[8.5px] uppercase"
-            style={{
-              fontFamily: "DMMono",
-              letterSpacing: 0.8,
-              color: mine ? "#c4baa3" : "#a89c80",
-            }}
+        {/* Footer: every message carries its own time, and your own
+            messages carry the delivery ticks beside it. */}
+        {!m.isDeleted ? (
+          <View
+            className="mt-1 flex-row items-center"
+            style={{ gap: 5, alignSelf: "flex-end" }}
           >
-            {pending ? "sending…" : "edited"}
-          </Text>
+            {m.editedAt || pending ? (
+              <Text
+                className="text-[8.5px] uppercase"
+                style={{
+                  fontFamily: "DMMono",
+                  letterSpacing: 0.8,
+                  color: mine ? "#c4baa3" : "#a89c80",
+                }}
+              >
+                {pending ? "sending…" : "edited"}
+              </Text>
+            ) : null}
+            <Text
+              className="text-[9px]"
+              style={{
+                fontFamily: "DMMono",
+                letterSpacing: 0.3,
+                color: mine ? "#c4baa3" : "#a89c80",
+              }}
+            >
+              {time}
+            </Text>
+            {mine && !pending && m.receipt ? (
+              <ReceiptTicks receipt={m.receipt} />
+            ) : null}
+          </View>
         ) : null}
       </View>
     </Pressable>
+    </>
+  );
+}
+
+/* ─── Date stamps ─── */
+
+function startsNewDay(m: ChatMessageDTO, prev?: ChatMessageDTO): boolean {
+  if (!prev) return true;
+  const a = new Date(prev.createdAt);
+  const b = new Date(m.createdAt);
+  return (
+    a.getFullYear() !== b.getFullYear() ||
+    a.getMonth() !== b.getMonth() ||
+    a.getDate() !== b.getDate()
+  );
+}
+
+function dayStampFor(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const startOf = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round(
+    (startOf(today) - startOf(d)) / (24 * 60 * 60 * 1000)
+  );
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  });
+}
+
+function DayStamp({ label }: { label: string }) {
+  return (
+    <View className="items-center" style={{ marginTop: 14, marginBottom: 4 }}>
+      <View
+        className="rounded-full px-3 py-1"
+        style={{ backgroundColor: "#efe5d0" }}
+      >
+        <Text
+          className="text-[10px] uppercase"
+          style={{
+            fontFamily: "DMMono-Medium",
+            letterSpacing: 1.4,
+            color: "#8a5821",
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/* ─── Delivery ticks ─── */
+
+// WhatsApp's vocabulary, because it's the one every user in chambers
+// already knows:
+//   ✓   sent      — on the server, nobody has opened the room since
+//   ✓✓  delivered — somebody has had the room open since it was sent
+//   ✓✓  read      — everyone else has read past it (aqua)
+function ReceiptTicks({
+  receipt,
+}: {
+  receipt: "sent" | "delivered" | "read";
+}) {
+  const color =
+    receipt === "read" ? "#56a0a8" : "rgba(196,186,163,0.85)";
+  return (
+    <View
+      accessibilityRole="image"
+      accessibilityLabel={
+        receipt === "read"
+          ? "Read by everyone"
+          : receipt === "delivered"
+            ? "Delivered"
+            : "Sent"
+      }
+      style={{ flexDirection: "row", alignItems: "center", marginLeft: 1 }}
+    >
+      <Feather name="check" size={11} color={color} />
+      {receipt !== "sent" ? (
+        <Feather
+          name="check"
+          size={11}
+          color={color}
+          style={{ marginLeft: -6 }}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -785,11 +914,16 @@ function formatBytes(n: number): string {
 function AttachmentView({
   att,
   mine,
+  isAdmin,
   base,
   authHeader,
 }: {
   att: ChatAttachment;
   mine: boolean;
+  // Sharing a file out of the office is the admin's call; everyone else
+  // opens it to read. The API returns 403 on ?download=1 for non-admins,
+  // so this is the courtesy, not the control.
+  isAdmin: boolean;
   base: string;
   authHeader: Record<string, string>;
 }) {
@@ -805,7 +939,12 @@ function AttachmentView({
         `/api/app/chat/attachments/${att.id}`,
         { fallbackName: att.filename, mime: att.contentType }
       );
-      await shareFile(dl.uri, dl.mime, att.filename);
+      if (isAdmin) {
+        await shareFile(dl.uri, dl.mime, att.filename);
+      } else {
+        // Hands the paper to a viewer, never to a send target.
+        await openFile(dl.uri, dl.mime);
+      }
     } catch (err) {
       if (
         err instanceof FileOpError &&
@@ -862,6 +1001,7 @@ function AttachmentView({
           headers={authHeader}
           filename={att.filename}
           busy={busy}
+          canShare={isAdmin}
           onClose={() => setViewerOpen(false)}
           onShare={open}
         />
@@ -903,7 +1043,11 @@ function AttachmentView({
       {busy ? (
         <ActivityIndicator size="small" color={mine ? "#f5ebd6" : "#8a5821"} />
       ) : (
-        <Feather name="download" size={14} color={mine ? "#c4baa3" : "#8a5821"} />
+        <Feather
+          name={isAdmin ? "download" : "eye"}
+          size={14}
+          color={mine ? "#c4baa3" : "#8a5821"}
+        />
       )}
     </Pressable>
   );
