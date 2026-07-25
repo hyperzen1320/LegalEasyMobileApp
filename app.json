@@ -37,7 +37,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#f4ecda"
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "router": {},

@@ -34,6 +34,7 @@ export default function ImageViewerModal({
   headers,
   filename,
   busy,
+  canShare = true,
   onClose,
   onShare,
 }: {
@@ -42,6 +43,9 @@ export default function ImageViewerModal({
   headers?: Record<string, string>;
   filename?: string;
   busy?: boolean;
+  // Taking the image OUT of the office is admin-only; everyone else just
+  // looks at it. The API enforces the same line.
+  canShare?: boolean;
   onClose: () => void;
   onShare: () => void;
 }) {
@@ -187,25 +191,29 @@ export default function ImageViewerModal({
           >
             {filename || "Image"}
           </Text>
-          <Pressable
-            onPress={onShare}
-            disabled={busy}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Share image"
-            style={{
-              height: 42,
-              width: 42,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {busy ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Feather name="share-2" size={20} color="#ffffff" />
-            )}
-          </Pressable>
+          {canShare ? (
+            <Pressable
+              onPress={onShare}
+              disabled={busy}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Share image"
+              style={{
+                height: 42,
+                width: 42,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {busy ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Feather name="share-2" size={20} color="#ffffff" />
+              )}
+            </Pressable>
+          ) : (
+            <View style={{ width: 42 }} />
+          )}
         </View>
       </GestureHandlerRootView>
     </Modal>
