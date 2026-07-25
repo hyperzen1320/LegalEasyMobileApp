@@ -285,6 +285,13 @@ export async function logout(): Promise<void> {
   await clearToken();
 }
 
+/**
+ * @deprecated Superseded by signupStart/signupVerify. The Sign Up screen
+ * now opens a chambers directly on the trial instead of queueing a
+ * request nobody reads (nothing in the global admin console surfaces the
+ * AccessRequest collection). Kept only because the endpoint still exists
+ * server-side; delete both together.
+ */
 export async function requestAccess(payload: {
   name: string;
   chambers: string;
@@ -295,6 +302,42 @@ export async function requestAccess(payload: {
   return api<{ ok: true; id: string }>("/api/mobile/access-requests", {
     method: "POST",
     body: JSON.stringify({ ...payload, source: "mobile" }),
+  });
+}
+
+/* ─────────── Sign up (emailed one-time code) ───────────
+   Two unauthenticated calls, shared verbatim with the web app.
+
+   `start` writes NOTHING to Partner or User — the chambers details ride
+   along inside the one-time-code record and are only spent once the
+   address proves itself, so an abandoned sign-up leaves nothing behind
+   in the global admin's list. `verify` is what creates the chambers on
+   the trial plan. */
+
+export async function signupStart(payload: {
+  chambersName: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  password: string;
+}): Promise<{ ok: true; retryAfterSeconds?: number }> {
+  return api('/api/account/signup/start', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function signupVerify(
+  email: string,
+  code: string
+): Promise<{
+  ok: true;
+  partner: { id: string; name: string; slug: string };
+  trial: { days: number; endsAt: string; seatLimit: number };
+}> {
+  return api('/api/account/signup/verify', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
   });
 }
 
