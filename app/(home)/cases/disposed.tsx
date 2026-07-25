@@ -26,6 +26,7 @@ import {
 import { useAuth } from "../../../lib/auth-context";
 import ExportSheet from "../../../components/ExportSheet";
 import ConfirmSheet from "../../../components/ConfirmSheet";
+import CnrChip from "../../../components/CnrChip";
 import {
   CASE_EXPORT_COLUMNS,
   DISPOSED_EXPORT_DEFAULT_KEYS,
@@ -564,8 +565,9 @@ function DisposedRow({
   selected: boolean;
   onToggleSelect: () => void;
 }) {
-  const disposedOn = c.disposedAt
-    ? new Date(c.disposedAt).toLocaleDateString("en-IN", {
+  const disposedIso = c.disposalDate ?? c.disposedAt;
+  const disposedOn = disposedIso
+    ? new Date(disposedIso).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -663,6 +665,12 @@ function DisposedRow({
         </Text>
       ) : null}
 
+      {c.cnr ? (
+        <View className="mt-1.5">
+          <CnrChip cnr={c.cnr} />
+        </View>
+      ) : null}
+
       {c.disposalRemarks ? (
         <Text
           className="mt-2 text-[12px] text-app-fg-soft"
@@ -671,6 +679,48 @@ function DisposedRow({
         >
           “{c.disposalRemarks}”
         </Text>
+      ) : null}
+
+      {c.caStatus || c.receivedByClient ? (
+        <View
+          className="mt-2 flex-row flex-wrap items-center"
+          style={{ gap: 8 }}
+        >
+          {c.caStatus ? (
+            <View
+              className="rounded px-2 py-1"
+              style={{ backgroundColor: "#efe5d0" }}
+            >
+              <Text
+                className="text-[9px] uppercase"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  letterSpacing: 1.2,
+                  color: "#8a5821",
+                }}
+              >
+                C.A. · {c.caStatus}
+              </Text>
+            </View>
+          ) : null}
+          {c.receivedByClient ? (
+            <View
+              className="rounded px-2 py-1"
+              style={{ backgroundColor: "#d2e6e7" }}
+            >
+              <Text
+                className="text-[9px] uppercase"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  letterSpacing: 1.2,
+                  color: "#3f9a8c",
+                }}
+              >
+                Received ✓
+              </Text>
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       {onReopen || onDelete ? (
