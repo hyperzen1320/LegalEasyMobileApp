@@ -63,6 +63,11 @@ import type { DownloadedFile } from "../../../../lib/files";
 
 const TEMP_PREFIX = "tmp:";
 
+// Vertical breathing room inside the horizontal board scroller. Shared
+// between the scroller's contentContainerStyle and the column height cap
+// so the two can never drift apart.
+const BOARD_V_PADDING = 14;
+
 function tempId(): string {
   return `${TEMP_PREFIX}${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -87,6 +92,13 @@ export default function BoardDetail() {
       : bp === "medium"
         ? 320
         : 340;
+
+  // Measured height of the board scroller. Columns are capped to it so a
+  // long list scrolls INSIDE its column instead of running off the bottom
+  // of a horizontal-only scroller, where nothing can reach it. It starts
+  // null and the columns fall back to a conservative estimate for the one
+  // frame before layout lands.
+  const [boardViewportH, setBoardViewportH] = useState<number | null>(null);
 
   const [data, setData] = useState<BoardFullResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -639,6 +651,7 @@ export default function BoardDetail() {
           <Animated.ScrollView
             ref={dnd.hScrollRef}
             onScroll={dnd.hScrollHandler}
+            onLayout={(e) => setBoardViewportH(e.nativeEvent.layout.height)}
             scrollEventThrottle={16}
             scrollEnabled={!anyDragging}
             horizontal
@@ -654,7 +667,7 @@ export default function BoardDetail() {
             snapToAlignment="start"
             contentContainerStyle={{
               paddingHorizontal: 16,
-              paddingVertical: 14,
+              paddingVertical: BOARD_V_PADDING,
               gap: 12,
               alignItems: "flex-start",
             }}
@@ -671,6 +684,7 @@ export default function BoardDetail() {
                 key={list.id}
                 list={list}
                 listWidth={listWidth}
+                viewportH={boardViewportH}
                 tasks={tasksByList.get(list.id) || []}
                 edges={
                   edgesByList.get(list.id) || {
@@ -1001,6 +1015,7 @@ function Header({
 function ListColumn({
   list,
   listWidth,
+  viewportH,
   tasks,
   edges,
   listTitleById,
@@ -1014,6 +1029,8 @@ function ListColumn({
 }: {
   list: CanvasList;
   listWidth: number;
+  // Measured height of the board scroller, or null until it has laid out.
+  viewportH: number | null;
   tasks: PreviewTask[];
   edges: { incoming: CanvasEdge[]; outgoing: CanvasEdge[] };
   listTitleById: Map<string, string>;
@@ -1028,9 +1045,24 @@ function ListColumn({
   const stripe = list.color || accent;
   const isPending = isTemp(list.id);
   const { height: winH } = useWindowDimensions();
-  // Hug content like the web column; cap near the viewport so a long list
-  // scrolls inside instead of the composer floating far below the cards.
-  const colMaxHeight = Math.max(300, winH - 240);
+  // Hug content like the web column, but never grow past the scroller that
+  // holds us.
+  //
+  // This used to be `winH - 240` — a guess, and on most phones a wrong one.
+  // The real viewport is the window minus the status bar, the header, the
+  // tab bar (which is 66 + the bottom inset, and taller again with 3-button
+  // navigation) and this scroller's own padding. Whenever that came to more
+  // than 240, a full column overflowed BELOW the visible area — and because
+  // the parent only scrolls horizontally, the cards down there and the
+  // add-card composer under them were simply unreachable.
+  //
+  // So measure instead: the scroller reports its height on layout and the
+  // column caps to it, minus the 14px of vertical padding at each end. The
+  // window-based figure survives only as the value for the single frame
+  // before that measurement arrives.
+  const colMaxHeight = viewportH
+    ? Math.max(220, viewportH - BOARD_V_PADDING * 2)
+    : Math.max(300, winH - 240);
   const bodyRef = useRef<ScrollView | null>(null);
   const dropHere =
     dnd.dropTarget && dnd.dropTarget.listId === list.id
