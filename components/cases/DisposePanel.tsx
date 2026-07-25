@@ -3,12 +3,14 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Sheet from "../Sheet";
+import { DateField } from "../CaseFields";
 import { useAuth } from "../../lib/auth-context";
 import {
   ApiError,
@@ -19,8 +21,26 @@ import {
 // Disposal is the archive lever: status → "Disposed" stamps disposedAt
 // and moves the matter to the archive; any other status clears it. Both
 // transitions are office-admin only on the server, so the controls only
-// render for the admin. Active cases get a "close the matter" row with
-// an optional remarks note; disposed ones get the stamp + reopen.
+// render for the admin. Closing a matter now captures the full disposal
+// record — recorded date, C.A. (certified-copy) status, a note and
+// whether the client has the copy — in one sheet, and an admin can edit
+// that record later without reopening the matter.
+
+const CA_OPTIONS = ["Applied", "Ready", "Delivered"];
+
+function todayLocal(): string {
+  // en-CA formats as YYYY-MM-DD in local time (no UTC day-drift in IST).
+  return new Date().toLocaleDateString("en-CA");
+}
+
+function fmtStamp(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function DisposePanel({
   c,
@@ -31,27 +51,50 @@ export default function DisposePanel({
 }) {
   const { isPartnerAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [disposalDate, setDisposalDate] = useState("");
+  const [caStatus, setCaStatus] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [receivedByClient, setReceivedByClient] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const disposed = Boolean(c.disposedAt);
 
-  async function dispose() {
+  // Seed the sheet from what's on file (or today's date for a fresh
+  // disposal) and open it. Used for both "close the matter" and, when
+  // already disposed, "edit disposal details".
+  function openSheet() {
+    setDisposalDate(
+      (c.disposalDate || c.disposedAt || "").slice(0, 10) ||
+        (disposed ? "" : todayLocal())
+    );
+    setCaStatus(c.caStatus || "");
+    setRemarks(c.disposalRemarks || "");
+    setReceivedByClient(Boolean(c.receivedByClient));
+    setError(null);
+    setSheetOpen(true);
+  }
+
+  async function save() {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
+      // Re-sending status "Disposed" on an already-disposed matter is a
+      // no-op transition server-side (disposedAt isn't bumped), so this
+      // one call handles both the first disposal and later edits.
       const res = await partnerUpdateCase(c.id, {
         status: "Disposed",
+        disposalDate: disposalDate || null,
+        caStatus: caStatus.trim(),
         disposalRemarks: remarks.trim(),
+        receivedByClient,
       });
       setSheetOpen(false);
-      setRemarks("");
       onChanged(res.case);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Couldn't dispose. Try again."
+        err instanceof ApiError ? err.message : "Couldn't save. Try again."
       );
     } finally {
       setBusy(false);
@@ -84,129 +127,178 @@ export default function DisposePanel({
     }
   }
 
-  if (disposed) {
-    const when = c.disposedAt
-      ? new Date(c.disposedAt).toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-      : "";
-    return (
-      <View
-        className="mt-4 rounded-xl p-4"
-        style={{
-          backgroundColor: "#faf6ed",
-          borderWidth: 1,
-          borderColor: "#e3d9c0",
-        }}
-      >
-        <View className="flex-row items-center justify-between">
-          <View
-            className="rounded-sm px-2 py-1"
-            style={{
-              borderWidth: 1.5,
-              borderColor: "rgba(126,119,99,0.6)",
-              transform: [{ rotate: "-2deg" }],
-            }}
-          >
-            <Text
-              className="text-[10px] uppercase"
-              style={{
-                fontFamily: "DMMono-Medium",
-                letterSpacing: 1.6,
-                color: "#7e7763",
-              }}
-            >
-              Disposed · {when}
-            </Text>
-          </View>
-          {isPartnerAdmin ? (
-            <Pressable
-              onPress={confirmReopen}
-              disabled={busy}
-              className="flex-row items-center gap-1.5 rounded-md px-3 py-2 active:opacity-80"
-              style={{ backgroundColor: "#efe5d0" }}
-              accessibilityRole="button"
-              accessibilityLabel="Reopen matter"
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color="#8a5821" />
-              ) : (
-                <Feather name="rotate-ccw" size={13} color="#8a5821" />
-              )}
-              <Text
-                className="text-[12px]"
-                style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
-              >
-                Reopen
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {c.disposalRemarks ? (
-          <Text
-            className="mt-3 text-[13px] leading-[20px] text-app-fg-soft"
-            style={{ fontFamily: "Manrope" }}
-          >
-            “{c.disposalRemarks}”
-          </Text>
-        ) : null}
-      </View>
-    );
-  }
-
-  if (!isPartnerAdmin) return null;
-
   return (
     <>
-      <Pressable
-        onPress={() => {
-          setError(null);
-          setSheetOpen(true);
-        }}
-        className="mt-4 rounded-xl bg-app-paper p-4 flex-row items-center gap-3 active:opacity-85"
-        style={{
-          shadowColor: "#0a1124",
-          shadowOpacity: 0.05,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 1 },
-          elevation: 1,
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Mark case as disposed"
-      >
+      {disposed ? (
         <View
-          className="h-9 w-9 items-center justify-center rounded-lg"
-          style={{ backgroundColor: "#efe5d0" }}
+          className="mt-4 rounded-xl p-4"
+          style={{
+            backgroundColor: "#faf6ed",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
         >
-          <Feather name="archive" size={15} color="#8a5821" />
+          <View className="flex-row items-center justify-between">
+            <View
+              className="rounded-sm px-2 py-1"
+              style={{
+                borderWidth: 1.5,
+                borderColor: "rgba(126,119,99,0.6)",
+                transform: [{ rotate: "-2deg" }],
+              }}
+            >
+              <Text
+                className="text-[10px] uppercase"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  letterSpacing: 1.6,
+                  color: "#7e7763",
+                }}
+              >
+                Disposed · {fmtStamp(c.disposalDate ?? c.disposedAt)}
+              </Text>
+            </View>
+            {isPartnerAdmin ? (
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Pressable
+                  onPress={openSheet}
+                  disabled={busy}
+                  className="flex-row items-center gap-1.5 rounded-md px-3 py-2 active:opacity-80"
+                  style={{ backgroundColor: "#efe5d0" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit disposal details"
+                >
+                  <Feather name="edit-2" size={13} color="#8a5821" />
+                  <Text
+                    className="text-[12px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+                  >
+                    Edit
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={confirmReopen}
+                  disabled={busy}
+                  className="flex-row items-center gap-1.5 rounded-md px-3 py-2 active:opacity-80"
+                  style={{ backgroundColor: "#efe5d0" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reopen matter"
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color="#8a5821" />
+                  ) : (
+                    <Feather name="rotate-ccw" size={13} color="#8a5821" />
+                  )}
+                  <Text
+                    className="text-[12px]"
+                    style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+                  >
+                    Reopen
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+
+          {c.caStatus || c.receivedByClient ? (
+            <View className="mt-3 flex-row flex-wrap items-center" style={{ gap: 8 }}>
+              {c.caStatus ? (
+                <View
+                  className="rounded px-2 py-1"
+                  style={{ backgroundColor: "#efe5d0" }}
+                >
+                  <Text
+                    className="text-[10px] uppercase"
+                    style={{
+                      fontFamily: "DMMono-Medium",
+                      letterSpacing: 1.2,
+                      color: "#8a5821",
+                    }}
+                  >
+                    C.A. · {c.caStatus}
+                  </Text>
+                </View>
+              ) : null}
+              {c.receivedByClient ? (
+                <View
+                  className="rounded px-2 py-1"
+                  style={{ backgroundColor: "#d2e6e7" }}
+                >
+                  <Text
+                    className="text-[10px] uppercase"
+                    style={{
+                      fontFamily: "DMMono-Medium",
+                      letterSpacing: 1.2,
+                      color: "#3f9a8c",
+                    }}
+                  >
+                    Received ✓
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {c.disposalRemarks ? (
+            <Text
+              className="mt-3 text-[13px] leading-[20px] text-app-fg-soft"
+              style={{ fontFamily: "Manrope" }}
+            >
+              “{c.disposalRemarks}”
+            </Text>
+          ) : null}
         </View>
-        <View className="flex-1">
-          <Text
-            className="text-[14px] text-app-ink"
-            style={{ fontFamily: "Manrope-SemiBold" }}
+      ) : isPartnerAdmin ? (
+        <Pressable
+          onPress={openSheet}
+          className="mt-4 rounded-xl bg-app-paper p-4 flex-row items-center gap-3 active:opacity-85"
+          style={{
+            shadowColor: "#0a1124",
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 1,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Mark case as disposed"
+        >
+          <View
+            className="h-9 w-9 items-center justify-center rounded-lg"
+            style={{ backgroundColor: "#efe5d0" }}
           >
-            Close the matter
-          </Text>
-          <Text
-            className="text-[11px] mt-0.5 text-app-fg-muted"
-            style={{ fontFamily: "Manrope" }}
-          >
-            Mark as Disposed and move it to the archive.
-          </Text>
-        </View>
-        <Feather name="chevron-right" size={15} color="#8a5821" />
-      </Pressable>
+            <Feather name="archive" size={15} color="#8a5821" />
+          </View>
+          <View className="flex-1">
+            <Text
+              className="text-[14px] text-app-ink"
+              style={{ fontFamily: "Manrope-SemiBold" }}
+            >
+              Close the matter
+            </Text>
+            <Text
+              className="text-[11px] mt-0.5 text-app-fg-muted"
+              style={{ fontFamily: "Manrope" }}
+            >
+              Mark as Disposed and record the details.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
 
       <Sheet
         visible={sheetOpen}
         onClose={busy ? () => {} : () => setSheetOpen(false)}
         eyebrow="The Archive"
-        title={`Dispose ${c.caseNo}`}
+        title={disposed ? `Disposal · ${c.caseNo}` : `Dispose ${c.caseNo}`}
         showClose={!busy}
+        containerStyle={{ maxHeight: "90%" }}
       >
-        <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12 }}
+        >
           {error ? (
             <View
               className="rounded-md px-3.5 py-2.5 mb-3"
@@ -221,8 +313,60 @@ export default function DisposePanel({
             </View>
           ) : null}
 
+          <DateField
+            label="Disposed date"
+            value={disposalDate}
+            onChange={setDisposalDate}
+          />
+
           <Text
-            className="text-[10px] uppercase text-app-copper-deep mb-2"
+            className="text-[10px] uppercase text-app-copper-deep mt-4 mb-2"
+            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+          >
+            C.A. status
+          </Text>
+          <View className="flex-row flex-wrap mb-2" style={{ gap: 8 }}>
+            {CA_OPTIONS.map((opt) => {
+              const on = caStatus.trim().toLowerCase() === opt.toLowerCase();
+              return (
+                <Pressable
+                  key={opt}
+                  onPress={() => setCaStatus(on ? "" : opt)}
+                  className="rounded-full px-3 py-1.5 active:opacity-70"
+                  style={{
+                    backgroundColor: on ? "#0a1124" : "#ffffff",
+                    borderWidth: 1,
+                    borderColor: on ? "#0a1124" : "#e3d9c0",
+                  }}
+                >
+                  <Text
+                    className="text-[12px]"
+                    style={{
+                      fontFamily: on ? "Manrope-SemiBold" : "Manrope",
+                      color: on ? "#f5ebd6" : "#0a1124",
+                    }}
+                  >
+                    {opt}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <TextInput
+            value={caStatus}
+            onChangeText={setCaStatus}
+            placeholder="Applied / Ready / Delivered"
+            placeholderTextColor="#a89c80"
+            className="rounded-xl bg-app-paper px-3.5 py-3 text-[14px] text-app-ink"
+            style={{
+              fontFamily: "Manrope",
+              borderWidth: 1,
+              borderColor: "#e3d9c0",
+            }}
+          />
+
+          <Text
+            className="text-[10px] uppercase text-app-copper-deep mt-4 mb-2"
             style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
           >
             Disposal note (optional)
@@ -245,9 +389,39 @@ export default function DisposePanel({
           />
 
           <Pressable
-            onPress={dispose}
+            onPress={() => setReceivedByClient((v) => !v)}
+            className="mt-4 flex-row items-center gap-2.5 active:opacity-70"
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: receivedByClient }}
+          >
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 6,
+                borderWidth: 1.5,
+                borderColor: receivedByClient ? "#c5853a" : "#c9bfa6",
+                backgroundColor: receivedByClient ? "#c5853a" : "transparent",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {receivedByClient ? (
+                <Feather name="check" size={14} color="#2a1c08" />
+              ) : null}
+            </View>
+            <Text
+              className="text-[14px] text-app-ink"
+              style={{ fontFamily: "Manrope-Medium" }}
+            >
+              Received by client
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={save}
             disabled={busy}
-            className="mt-4 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
+            className="mt-5 rounded-xl items-center justify-center flex-row gap-2 active:opacity-90"
             style={{
               backgroundColor: "#0a1124",
               paddingVertical: 14,
@@ -258,7 +432,7 @@ export default function DisposePanel({
               elevation: 4,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Confirm disposal"
+            accessibilityLabel={disposed ? "Save disposal details" : "Confirm disposal"}
           >
             {busy ? (
               <ActivityIndicator size="small" color="#f5ebd6" />
@@ -269,11 +443,15 @@ export default function DisposePanel({
               className="text-[13.5px]"
               style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
             >
-              {busy ? "Archiving…" : "Dispose & archive"}
+              {busy
+                ? "Saving…"
+                : disposed
+                  ? "Save details"
+                  : "Dispose & archive"}
             </Text>
           </Pressable>
-          <View style={{ height: 16 }} />
-        </View>
+          <View style={{ height: 24 }} />
+        </ScrollView>
       </Sheet>
     </>
   );

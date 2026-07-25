@@ -9,6 +9,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import Sheet from "../Sheet";
 import { DateField } from "../CaseFields";
+import CourtFilterField from "./CourtFilterField";
 import {
   partnerListCourts,
   partnerListUsers,
@@ -16,11 +17,12 @@ import {
   type PartnerCourt,
 } from "../../lib/api";
 
-// Vault filter sheet — same five structural filters as the web toolbar
+// Vault filter sheet — same structural filters as the web toolbar
 // (place, court, advocate, date range); search stays in the list header.
 // Options load lazily the first time the sheet opens: courts feed both
-// the place chips (distinct, sorted) and the court chips; the office
-// roster feeds the advocate chips.
+// the place chips (distinct, sorted) and the court dropdown (ordered by
+// court number, see lib/court-order); the office roster feeds the
+// advocate chips.
 
 type Advocate = { id: string; name: string };
 
@@ -136,17 +138,10 @@ export default function CaseFilterSheet({
               }
             />
 
-            <ChipSection
-              label="Court"
-              empty="No courts yet — add them in Court Hub."
-              options={(courts ?? []).map((c) => ({
-                key: c.id,
-                label: c.number ? `${c.name} · ${c.number}` : c.name,
-              }))}
-              selected={draft.courtId}
-              onPick={(k) =>
-                set("courtId", draft.courtId === k ? undefined : k)
-              }
+            <CourtFilterField
+              courts={courts ?? []}
+              selectedId={draft.courtId}
+              onSelect={(id) => set("courtId", id)}
             />
 
             <ChipSection
