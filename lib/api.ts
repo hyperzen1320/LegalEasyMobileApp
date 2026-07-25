@@ -337,6 +337,45 @@ export function tutorialFileUrl(id: string): string {
   return `${getApiBaseUrl()}/api/mobile/tutorials/${id}/file`;
 }
 
+/* ─────────── Password reset (emailed one-time code) ───────────
+   Three unauthenticated calls, shared verbatim with the web app:
+
+     start   mails a six-digit code to a registered address
+     verify  exchanges a correct code for a short-lived signed ticket
+     reset   spends the ticket and writes the new password
+
+   `start` deliberately answers the same way whether or not the address
+   has an account — the server won't confirm who banks with it. */
+
+export async function passwordResetStart(
+  email: string
+): Promise<{ ok: true; retryAfterSeconds?: number; throttled?: boolean }> {
+  return api("/api/account/password/start", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function passwordResetVerify(
+  email: string,
+  code: string
+): Promise<{ ok: true; ticket: string }> {
+  return api("/api/account/password/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+export async function passwordResetComplete(
+  ticket: string,
+  password: string
+): Promise<{ ok: true }> {
+  return api("/api/account/password/reset", {
+    method: "POST",
+    body: JSON.stringify({ ticket, password }),
+  });
+}
+
 /* ─────────── Admin endpoints (for global_admin) ─────────── */
 export async function adminDashboard(): Promise<DashboardData> {
   return api<DashboardData>("/api/admin/dashboard", { method: "GET" });
