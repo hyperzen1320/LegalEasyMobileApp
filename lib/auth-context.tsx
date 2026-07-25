@@ -17,6 +17,7 @@ import {
   type MobileUser,
   type MobilePartner,
 } from "./api";
+import { readFeatures, type FeatureMap } from "./features";
 
 // Single source of truth for "who is signed in". Replaces the five-plus
 // screens that each called getMe() on focus and stored the result in
@@ -44,6 +45,9 @@ export type AuthState = {
   isPartnerAdmin: boolean;
   // Global Legalezi admin. Drives access to the (admin) shell.
   isGlobalAdmin: boolean;
+  // Modules this chambers can reach. Empty map = everything on, which is
+  // also what an older backend (sending no map at all) means.
+  features: FeatureMap;
   // Set when the boot probe failed (typically expired session). Cleared
   // on the next successful refresh().
   error: string | null;
@@ -63,6 +67,7 @@ const GUEST_STATE: AuthState = {
   partner: null,
   isPartnerAdmin: false,
   isGlobalAdmin: false,
+  features: {},
   error: null,
 };
 
@@ -91,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         partner: data.partner,
         isPartnerAdmin: data.user.userType === "partner_admin",
         isGlobalAdmin: data.user.userType === "global_admin",
+        features: readFeatures(data.partner?.features),
         error: null,
       });
     },

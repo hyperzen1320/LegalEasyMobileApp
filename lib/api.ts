@@ -22,6 +22,9 @@ export type MobilePartner = {
     startDate: string;
     endDate: string;
   };
+  // Which modules the global admin has left switched on. Absent on an
+  // older backend, which reads as "everything on" — see lib/features.ts.
+  features?: Record<string, boolean>;
 };
 
 export type AdminPartner = {

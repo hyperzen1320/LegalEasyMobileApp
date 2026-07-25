@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
+import { isFeatureEnabled, type FeatureKey } from "../../lib/features";
 
 type MoreItem = {
   label: string;
@@ -13,11 +14,14 @@ type MoreItem = {
   comingSoon?: boolean;
   badge?: number;
   onPress?: () => void;
+  // The module switch this entry belongs to. Absent = always available
+  // (My Profile, Support and Sign out aren't modules).
+  feature?: FeatureKey;
 };
 
 export default function More() {
   const router = useRouter();
-  const { user, partner, isPartnerAdmin, logout } = useAuth();
+  const { user, partner, isPartnerAdmin, logout, features } = useAuth();
   const { unread } = useChatUnread();
 
   async function onSignOut() {
@@ -28,6 +32,7 @@ export default function More() {
   const tools: MoreItem[] = [
     {
       label: "Senior Desk",
+      feature: "seniorDesk",
       description: "Office chat, private notes & reminders",
       icon: "message-square",
       badge: unread.totalUnread,
@@ -35,36 +40,42 @@ export default function More() {
     },
     {
       label: "Client Crew",
+      feature: "clients",
       description: "Clients & linked matters",
       icon: "users",
       onPress: () => router.push("/(home)/clients"),
     },
     {
       label: "Court Hub",
+      feature: "courts",
       description: "Master list of courts",
       icon: "home",
       onPress: () => router.push("/(home)/courts"),
     },
     {
       label: "Work Flow",
+      feature: "workflow",
       description: "Trello-style boards for office processes",
       icon: "layout",
       onPress: () => router.push("/(home)/workflow"),
     },
     {
       label: "AI Assistant",
+      feature: "ai",
       description: "Drafts, plaints, prompts",
       icon: "zap",
       onPress: () => router.push("/(home)/ai"),
     },
     {
       label: "Disposed Cases",
+      feature: "disposed",
       description: "Closed matters archive",
       icon: "archive",
       onPress: () => router.push("/(home)/cases/disposed"),
     },
     {
       label: "Users / Advocates",
+      feature: "users",
       description: "Office team & roles",
       icon: "user-plus",
       onPress: () => router.push("/(home)/users"),
@@ -80,12 +91,14 @@ export default function More() {
       ? ([
           {
             label: "Attendance",
+      feature: "attendance",
             description: "The office register, day by day",
             icon: "check-square",
             onPress: () => router.push("/(home)/attendance"),
           },
           {
             label: "Office Activity",
+      feature: "activity",
             description: "Audit log of everything that happened",
             icon: "activity",
             onPress: () => router.push("/(home)/activity"),
@@ -105,6 +118,13 @@ export default function More() {
       onPress: () => router.push("/(home)/tools"),
     },
   ];
+
+  // Drop anything the global admin has switched off for this chambers.
+  // The screens redirect and the APIs 403 regardless — this is so the
+  // menu doesn't advertise a door that won't open.
+  const visibleTools = tools.filter(
+    (t) => !t.feature || isFeatureEnabled(features, t.feature)
+  );
 
   const account: MoreItem[] = [
     {
@@ -203,7 +223,7 @@ export default function More() {
 
           {/* Tools section */}
           <SectionLabel>More tools</SectionLabel>
-          <Section items={tools} />
+          <Section items={visibleTools} />
 
           {/* Account section */}
           <SectionLabel>Account</SectionLabel>

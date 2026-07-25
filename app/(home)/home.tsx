@@ -20,6 +20,7 @@ import {
 } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
+import { isFeatureEnabled, type FeatureKey } from "../../lib/features";
 import { useNotificationCount } from "../../lib/notification-count";
 import { LiveOverview } from "../../components/LiveOverview";
 import BellSheet from "../../components/BellSheet";
@@ -348,15 +349,18 @@ function StatsGrid({
   unreadCount: number;
 }) {
   const router = useRouter();
+  const { features } = useAuth();
   const items: Array<{
     label: string;
     value: number;
     variant: "copper" | "ink" | "paper";
     icon: keyof typeof Feather.glyphMap;
     href: string;
+    feature: FeatureKey;
   }> = [
     {
       label: "Today",
+      feature: "hearings",
       value: stats?.todayHearings ?? 0,
       variant: "copper",
       icon: "calendar",
@@ -364,6 +368,7 @@ function StatsGrid({
     },
     {
       label: "Tomorrow",
+      feature: "hearings",
       value: stats?.tomorrowHearings ?? 0,
       variant: "ink",
       icon: "calendar",
@@ -371,6 +376,7 @@ function StatsGrid({
     },
     {
       label: "Work Flow",
+      feature: "workflow",
       value: boardCount,
       variant: "ink",
       icon: "trello",
@@ -378,6 +384,7 @@ function StatsGrid({
     },
     {
       label: "Senior Desk",
+      feature: "seniorDesk",
       value: unreadCount,
       variant: "paper",
       icon: "message-square",
@@ -385,6 +392,7 @@ function StatsGrid({
     },
     {
       label: "Pending",
+      feature: "hearings",
       value: stats?.pendingDates ?? 0,
       variant: "copper",
       icon: "alert-triangle",
@@ -392,6 +400,7 @@ function StatsGrid({
     },
     {
       label: "Case Vault",
+      feature: "cases",
       value: stats?.caseVault ?? 0,
       variant: "paper",
       icon: "briefcase",
@@ -399,9 +408,14 @@ function StatsGrid({
     },
   ];
 
+  // A tile that leads somewhere this chambers can't go would just be a
+  // dead end — the screen redirects and the API 403s.
+  const visible = items.filter((it) => isFeatureEnabled(features, it.feature));
+  if (visible.length === 0) return null;
+
   return (
     <View className="mt-6 flex-row flex-wrap gap-3">
-      {items.map((it, i) => (
+      {visible.map((it, i) => (
         <Animated.View
           key={it.label}
           entering={FadeInDown.duration(500).delay(80 + i * 60)}
