@@ -79,7 +79,7 @@ export default function HomeLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          tabBarLabel: "Home",
+          tabBarLabel: "Dashboard",
           tabBarIcon: ({ color }) => (
             <Feather name="grid" size={20} color={color} />
           ),
@@ -143,6 +143,7 @@ export default function HomeLayout() {
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="attendance" options={{ href: null }} />
       <Tabs.Screen name="support" options={{ href: null }} />
+      <Tabs.Screen name="tools" options={{ href: null }} />
     </Tabs>
   );
 }

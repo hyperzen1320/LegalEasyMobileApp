@@ -16,6 +16,7 @@ import {
   partnerCreateCourt,
   type PartnerCourt,
 } from "../../lib/api";
+import { sortCourts } from "../../lib/court-order";
 
 // Typeable court picker — mirrors the web CourtCombobox. Tapping the field
 // opens a sheet listing the office's courts (name, place · number, matter
@@ -72,10 +73,12 @@ export default function CourtCombobox({
   const trimmed = query.trim();
   const filtered = useMemo(() => {
     const q = trimmed.toLowerCase();
-    if (!q) return courts;
-    return courts.filter((c) =>
-      `${c.name} ${c.number} ${c.place}`.toLowerCase().includes(q)
-    );
+    const base = !q
+      ? courts
+      : courts.filter((c) =>
+          `${c.name} ${c.number} ${c.place}`.toLowerCase().includes(q)
+        );
+    return sortCourts(base);
   }, [trimmed, courts]);
 
   const exact = courts.some(

@@ -298,6 +298,22 @@ export async function requestAccess(payload: {
   });
 }
 
+// Raise a support ticket from More → Support. The reporter's identity
+// (name / email) is resolved server-side from the session, so we only send
+// the subject, category, message and an optional phone override. It lands
+// in the Global-Admin support inbox.
+export async function partnerCreateSupportTicket(payload: {
+  subject?: string;
+  category?: string;
+  message: string;
+  phone?: string;
+}): Promise<{ ok: true; id: string }> {
+  return api<{ ok: true; id: string }>("/api/mobile/support", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /* ─────────── Password reset (emailed one-time code) ───────────
    Three unauthenticated calls, shared verbatim with the web app:
 
@@ -444,7 +460,10 @@ export type PartnerCase = {
   lastHearingDate: string | null;
   hearings: PartnerCaseHearing[];
   disposedAt: string | null;
+  disposalDate: string | null;
   disposalRemarks: string;
+  caStatus: string;
+  receivedByClient: boolean;
   createdAt: string;
   updatedAt: string;
   // Present on list rows (the detail serializer omits some of these).
@@ -472,9 +491,14 @@ export type PartnerCaseInput = {
   status?: string;
   nextHearingDate?: string | null;
   lastHearingDate?: string | null;
-  // Free-form note shown on the disposed archive. Persisted whenever the
-  // status moves to "Disposed" (admin-only transition, server-enforced).
+  // Disposal record — persisted whenever the status is "Disposed" (an
+  // admin-only transition, server-enforced). disposalDate is the recorded
+  // order date (defaults to today server-side); caStatus tracks the
+  // certified-copy application (Applied / Ready / Delivered).
   disposalRemarks?: string;
+  disposalDate?: string | null;
+  caStatus?: string;
+  receivedByClient?: boolean;
 };
 
 export type PartnerDashboardData = {
@@ -1515,7 +1539,10 @@ export type DisposedCase = {
   status: string;
   appearingFor: string;
   disposedAt: string | null;
+  disposalDate: string | null;
   disposalRemarks: string;
+  caStatus: string;
+  receivedByClient: boolean;
   lastHearingDate: string | null;
   createdAt: string;
   updatedAt: string;
