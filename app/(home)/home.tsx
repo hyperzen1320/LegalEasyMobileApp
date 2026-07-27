@@ -283,11 +283,13 @@ function Hero({
       >
         {greeting},
       </Text>
+      {/* The name reads in the same cream as the greeting above it — one
+          line, one colour. It used to break to copper mid-sentence. The
+          italic is what distinguishes it now. */}
       <Text
-        className="text-[26px] leading-[1.1] tracking-tight"
+        className="text-[26px] leading-[1.1] tracking-tight text-app-ivory"
         style={{
           fontFamily: "Crimson-SemiBoldItalic",
-          color: "#ddb074",
           fontStyle: "italic",
         }}
       >
@@ -524,7 +526,7 @@ function TodaysBoard({
           Today&rsquo;s Board
         </Text>
         <Pressable
-          onPress={() => router.push("/(home)/cases")}
+          onPress={() => router.push("/(home)/hearings?bucket=today")}
           hitSlop={6}
           className="active:opacity-50"
         >

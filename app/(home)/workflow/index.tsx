@@ -109,7 +109,7 @@ export default function Workflow() {
     <View className="flex-1 bg-app-canvas">
       <StatusBar style="dark" backgroundColor="#f4ede0" />
       <SafeAreaView className="flex-1" edges={["top"]}>
-        <TopBar count={boards.length} onCreate={() => setCreating(true)} />
+        <TopBar count={boards.length} />
 
         {/* Search + filter */}
         <View className="px-5 pt-3 pb-1 bg-app-canvas flex-row items-center gap-2">
@@ -347,13 +347,7 @@ export default function Workflow() {
 
 /* ─── Top bar ─── */
 
-function TopBar({
-  count,
-  onCreate,
-}: {
-  count: number;
-  onCreate: () => void;
-}) {
+function TopBar({ count }: { count: number }) {
   const router = useRouter();
   return (
     <View className="border-b border-app-edge bg-app-canvas px-5 py-3.5 flex-row items-center gap-3">
@@ -388,26 +382,10 @@ function TopBar({
           ) : null}
         </View>
       </View>
-      <Pressable
-        onPress={onCreate}
-        className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
-        style={{
-          backgroundColor: "#c5853a",
-          shadowColor: "#c5853a",
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 3,
-        }}
-      >
-        <Feather name="plus" size={14} color="#2a1c08" />
-        <Text
-          className="text-[12px] font-semibold"
-          style={{ fontFamily: "Manrope-SemiBold", color: "#2a1c08" }}
-        >
-          New
-        </Text>
-      </Pressable>
+      {/* No "New" button here. The list's own "Create new board" row sits
+          at the top of the boards themselves and does the same thing —
+          two entry points for one action, one of them crowding the
+          header. */}
     </View>
   );
 }

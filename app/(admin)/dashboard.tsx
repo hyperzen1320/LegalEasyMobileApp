@@ -453,7 +453,7 @@ function TipCard() {
         Tip · § 01
       </Text>
       <Text className="mt-2 font-plex text-[13px] leading-[20px] text-admin-fg">
-        Trials default to 14 days. You can extend a partner&rsquo;s trial from
+        Trials default to 7 days. You can extend a partner&rsquo;s trial from
         their detail page if they need more time before going active.
       </Text>
     </Animated.View>

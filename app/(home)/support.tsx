@@ -22,7 +22,7 @@ import { ApiError, partnerCreateSupportTicket } from "../../lib/api";
 // backend (Global-Admin support inbox), rather than only opening the mail
 // app — so nothing is lost if the device has no mail client set up. The
 // support address is still shown for anyone who prefers email.
-const SUPPORT_EMAIL = "ksnagendhran@gmail.com";
+const SUPPORT_EMAIL = "legalezi69@gmail.com";
 
 const CATEGORIES = ["Bug", "Question", "Feature request", "Billing", "Other"];
 
