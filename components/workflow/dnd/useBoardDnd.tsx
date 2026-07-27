@@ -13,9 +13,14 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import CardItem from "../CardItem";
 import type { CanvasList, PreviewTask } from "../../../lib/api";
+import {
+  CARD_LONG_PRESS_MS,
+  EDGE_BAND,
+  edgeAutoscrollDelta,
+} from "./autoscroll";
 
 // Long-press drag & drop for the horizontal Kanban. The trick stack:
-//  • Gesture.Pan().activateAfterLongPress(300) per card — before 300ms
+//  • Gesture.Pan().activateAfterLongPress(CARD_LONG_PRESS_MS) per card — before 300ms
 //    any movement belongs to the ScrollViews, so scrolling is untouched;
 //    after activation we flip `scrollEnabled` off everywhere (the
 //    kill-switch that wins the gesture war) — programmatic scrollTo
@@ -29,7 +34,6 @@ import type { CanvasList, PreviewTask } from "../../../lib/api";
 //    throttled JS hit-test.
 // The action-sheet Move flow stays untouched as the accessible fallback.
 
-const EDGE_BAND = 56; // px from screen edge that triggers h-autoscroll
 const COLUMN_BAND = 64; // px from column top/bottom for v-autoscroll
 const HIT_THROTTLE_MS = 70;
 const CONTENT_PADDING = 16; // horizontal ScrollView contentContainer padding
@@ -246,11 +250,7 @@ export function useBoardDnd(opts: {
     if (!draggingSV.value) return;
     const x = dragX.value;
     let delta = 0;
-    if (x < EDGE_BAND) {
-      delta = -(8 + Math.round((EDGE_BAND - x) / 5));
-    } else if (x > screenWSV.value - EDGE_BAND) {
-      delta = 8 + Math.round((x - (screenWSV.value - EDGE_BAND)) / 5);
-    }
+    delta = edgeAutoscrollDelta(x, screenWSV.value);
     if (delta !== 0) {
       const next = Math.max(0, hScrollOffset.value + delta);
       scrollTo(hScrollRef, next, 0, false);
