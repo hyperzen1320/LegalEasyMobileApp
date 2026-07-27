@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
+import { useNotificationCount } from "../../lib/notification-count";
 import { isFeatureEnabled, type FeatureKey } from "../../lib/features";
 
 type MoreItem = {
@@ -23,6 +24,9 @@ export default function More() {
   const router = useRouter();
   const { user, partner, isPartnerAdmin, logout, features } = useAuth();
   const { unread } = useChatUnread();
+  // Pending delete requests waiting on the admin. The singleton already
+  // polls this partner-wide, so the count costs nothing extra here.
+  const { count: pendingDeletes } = useNotificationCount();
 
   async function onSignOut() {
     await logout();
@@ -97,8 +101,15 @@ export default function More() {
             onPress: () => router.push("/(home)/attendance"),
           },
           {
+            label: "Delete Requests",
+            description: "Approve or reject what the office asked to remove",
+            icon: "trash-2",
+            badge: pendingDeletes,
+            onPress: () => router.push("/(home)/delete-requests"),
+          },
+          {
             label: "Office Activity",
-      feature: "activity",
+            feature: "activity",
             description: "Audit log of everything that happened",
             icon: "activity",
             onPress: () => router.push("/(home)/activity"),

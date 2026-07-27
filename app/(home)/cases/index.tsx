@@ -40,10 +40,13 @@ import {
   CASE_EXPORT_DEFAULT_KEYS,
   exportCases,
 } from "../../../lib/exports";
+import { useDeleteRequestFallback } from "../../../components/useDeleteRequestFallback";
 
 const PAGE_SIZE = 50;
 
 export default function CaseVault() {
+  const { offerDeleteRequest, deleteRequestSheet } =
+    useDeleteRequestFallback();
   const router = useRouter();
   // Exports are office-admin only (server enforces role=admin; the
   // partner admin is the only mobile user that maps to it — /me doesn't
@@ -285,6 +288,8 @@ export default function CaseVault() {
       }
       setConfirm(null);
     } catch (err) {
+      setConfirm(null);
+      if (offerDeleteRequest(err)) return;
       Alert.alert(
         "Couldn't delete",
         err instanceof ApiError ? err.message : "Try again."
@@ -668,6 +673,8 @@ export default function CaseVault() {
           confirm?.kind === "bulk" ? `Delete ${selectionCount}` : "Delete"
         }
       />
+
+      {deleteRequestSheet}
     </View>
   );
 }

@@ -32,6 +32,7 @@ import {
   DISPOSED_EXPORT_DEFAULT_KEYS,
   exportCases,
 } from "../../../lib/exports";
+import { useDeleteRequestFallback } from "../../../components/useDeleteRequestFallback";
 
 // The archive — closed matters, newest disposal first (server caps at
 // 500). Reopening moves the matter back to the vault by flipping its
@@ -39,6 +40,8 @@ import {
 // only renders for the office admin).
 
 export default function DisposedCases() {
+  const { offerDeleteRequest, deleteRequestSheet } =
+    useDeleteRequestFallback();
   const router = useRouter();
   const { isPartnerAdmin } = useAuth();
   const [cases, setCases] = useState<DisposedCase[]>([]);
@@ -136,6 +139,8 @@ export default function DisposedCases() {
       setCases((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
+      setDeleteTarget(null);
+      if (offerDeleteRequest(err)) return;
       Alert.alert(
         "Couldn't delete",
         err instanceof ApiError ? err.message : "Try again."
@@ -538,6 +543,8 @@ export default function DisposedCases() {
         } for re-use. This can't be undone.`}
         confirmLabel="Delete"
       />
+
+      {deleteRequestSheet}
     </View>
   );
 }

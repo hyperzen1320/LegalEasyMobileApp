@@ -19,6 +19,7 @@ import {
   ApiError,
   type PartnerCase,
 } from "../../lib/api";
+import { useDeleteRequestFallback } from "../useDeleteRequestFallback";
 import { DateField, formatDateForDisplay } from "../CaseFields";
 import StatusCombobox from "./StatusCombobox";
 import DocumentsPanel from "./DocumentsPanel";
@@ -983,6 +984,7 @@ function DeleteRow({
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const { offerDeleteRequest, deleteRequestSheet } = useDeleteRequestFallback();
 
   function confirm() {
     Alert.alert(
@@ -999,11 +1001,13 @@ function DeleteRow({
               await partnerDeleteCase(caseId);
               onDeleted();
             } catch (err) {
+              setDeleting(false);
+              // A non-admin can't delete directly — but they CAN ask.
+              if (offerDeleteRequest(err)) return;
               Alert.alert(
                 "Couldn't delete",
                 err instanceof ApiError ? err.message : "Try again."
               );
-              setDeleting(false);
             }
           },
         },
@@ -1036,6 +1040,8 @@ function DeleteRow({
           Delete this matter
         </Text>
       </Pressable>
+
+      {deleteRequestSheet}
     </View>
   );
 }

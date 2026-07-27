@@ -6,9 +6,6 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Alert,
-  TextInput,
-  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -18,13 +15,16 @@ import { Feather } from "@expo/vector-icons";
 import {
   partnerActivityHistory,
   partnerListDeleteRequests,
-  partnerApproveDeleteRequest,
-  partnerRejectDeleteRequest,
   partnerGetBoardFull,
   type ActivityHistoryRow,
   type DeleteRequestRow,
 } from "../../../../lib/api";
 import { useBoardLiveFeed } from "../../../../lib/useBoardLiveFeed";
+import { useAuth } from "../../../../lib/auth-context";
+import {
+  DeleteRequestCard,
+  useDeleteRequestReview,
+} from "../../../../components/workflow/DeleteRequestReview";
 
 /**
  * Bell drawer — board-scoped activity feed + admin's delete-request
@@ -36,6 +36,15 @@ export default function BoardActivity() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const boardId = String(id);
   const router = useRouter();
+  const { isPartnerAdmin, status } = useAuth();
+
+  // The audit trail is the office admin's, here as much as on the office
+  // Activity screen — which has always guarded itself this way. This one
+  // never did, so any junior with a board open could read the whole feed
+  // through the bell.
+  useEffect(() => {
+    if (status === "authenticated" && !isPartnerAdmin) router.back();
+  }, [status, isPartnerAdmin, router]);
 
   const [tab, setTab] = useState<"activity" | "requests">("activity");
   const [history, setHistory] = useState<ActivityHistoryRow[]>([]);
@@ -133,38 +142,14 @@ export default function BoardActivity() {
   }, [loadInitial, loadRequests]);
 
   /* ─── Approve / reject ─── */
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewMode, setReviewMode] = useState<"approve" | "reject" | null>(
-    null
+  // Shared with the office-wide Delete Requests inbox so the two
+  // screens can't drift on what a request looks like or what reviewing
+  // one does. This drawer only ever showed board-scoped requests —
+  // cases, documents, clients and courts carry no boardId and were
+  // invisible here, which is what the inbox now covers.
+  const { open: openReview, sheet: reviewSheet } = useDeleteRequestReview(
+    (id) => setRequests((prev) => prev.filter((r) => r.id !== id))
   );
-
-  function openReview(id: string, mode: "approve" | "reject") {
-    setReviewingId(id);
-    setReviewNote("");
-    setReviewMode(mode);
-  }
-
-  async function commitReview() {
-    if (!reviewingId || !reviewMode) return;
-    try {
-      if (reviewMode === "approve") {
-        await partnerApproveDeleteRequest(reviewingId, reviewNote);
-      } else {
-        await partnerRejectDeleteRequest(reviewingId, reviewNote);
-      }
-      setRequests((prev) => prev.filter((r) => r.id !== reviewingId));
-    } catch (err) {
-      Alert.alert(
-        "Couldn't submit review",
-        err instanceof Error ? err.message : "Try again."
-      );
-    } finally {
-      setReviewingId(null);
-      setReviewNote("");
-      setReviewMode(null);
-    }
-  }
 
   return (
     <View className="flex-1 bg-app-canvas">
@@ -307,7 +292,7 @@ export default function BoardActivity() {
             ) : (
               <View style={{ gap: 10 }}>
                 {requests.map((r) => (
-                  <RequestRow
+                  <DeleteRequestCard
                     key={r.id}
                     row={r}
                     isAdmin={isAdmin}
@@ -322,101 +307,7 @@ export default function BoardActivity() {
       </SafeAreaView>
 
       {/* Review note modal */}
-      <Modal
-        visible={Boolean(reviewingId && reviewMode)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setReviewingId(null)}
-      >
-        <Pressable
-          onPress={() => setReviewingId(null)}
-          className="flex-1 justify-center"
-          style={{
-            backgroundColor: "rgba(10,17,36,0.55)",
-            paddingHorizontal: 20,
-          }}
-        >
-          <Pressable
-            className="rounded-2xl"
-            style={{
-              backgroundColor: "#ffffff",
-              padding: 18,
-            }}
-            onPress={() => {
-              /* swallow */
-            }}
-          >
-            <Text
-              className="text-[10px] uppercase text-app-copper-deep"
-              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.6 }}
-            >
-              {reviewMode === "approve" ? "Approve" : "Reject"}
-            </Text>
-            <Text
-              className="mt-0.5 text-[18px] tracking-tight text-app-ink"
-              style={{ fontFamily: "Crimson-SemiBold" }}
-            >
-              Add a note (optional)
-            </Text>
-            <TextInput
-              value={reviewNote}
-              onChangeText={setReviewNote}
-              placeholder="Optional context for the requester."
-              placeholderTextColor="#a89c80"
-              multiline
-              style={{
-                marginTop: 12,
-                borderWidth: 1,
-                borderColor: "#e3d9c0",
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                fontFamily: "Manrope",
-                fontSize: 13,
-                color: "#0a1124",
-                minHeight: 64,
-                textAlignVertical: "top",
-              }}
-            />
-            <View className="mt-3 flex-row" style={{ gap: 8 }}>
-              <Pressable
-                onPress={() => {
-                  setReviewingId(null);
-                  setReviewMode(null);
-                }}
-                className="flex-1 rounded-md py-3 items-center active:opacity-50"
-                style={{
-                  backgroundColor: "#ffffff",
-                  borderWidth: 1,
-                  borderColor: "#e3d9c0",
-                }}
-              >
-                <Text
-                  className="text-[13px]"
-                  style={{ fontFamily: "Manrope-Medium", color: "#4d4538" }}
-                >
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={commitReview}
-                className="flex-[1.4] rounded-md py-3 items-center"
-                style={{
-                  backgroundColor:
-                    reviewMode === "approve" ? "#56a0a8" : "#c14a37",
-                }}
-              >
-                <Text
-                  className="text-[13px]"
-                  style={{ fontFamily: "Manrope-SemiBold", color: "#ffffff" }}
-                >
-                  {reviewMode === "approve" ? "Approve" : "Reject"}
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {reviewSheet}
     </View>
   );
 }
@@ -596,96 +487,6 @@ function ActivityRow({ row }: { row: ActivityHistoryRow }) {
       >
         {stripped}
       </Text>
-    </View>
-  );
-}
-
-function RequestRow({
-  row,
-  isAdmin,
-  onApprove,
-  onReject,
-}: {
-  row: DeleteRequestRow;
-  isAdmin: boolean;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  return (
-    <View
-      className="rounded-xl px-3.5 py-3"
-      style={{
-        backgroundColor: "#ffffff",
-        borderWidth: 1,
-        borderColor: "#e3d9c0",
-      }}
-    >
-      <View className="flex-row items-center" style={{ gap: 8 }}>
-        <View
-          className="h-7 w-7 items-center justify-center rounded-full"
-          style={{ backgroundColor: "#c14a37" }}
-        >
-          <Feather name="trash-2" size={11} color="#ffffff" />
-        </View>
-        <View className="flex-1">
-          <Text
-            className="text-[13px] text-app-ink"
-            style={{ fontFamily: "Manrope-SemiBold" }}
-            numberOfLines={1}
-          >
-            {row.requesterName}
-          </Text>
-          <Text
-            className="text-[10px] uppercase mt-0.5"
-            style={{
-              fontFamily: "DMMono-Medium",
-              letterSpacing: 1.2,
-              color: "#7a7060",
-            }}
-          >
-            wants to delete {row.targetType} · {row.targetName}
-          </Text>
-        </View>
-      </View>
-      <Text
-        className="mt-2 text-[12px] text-app-fg-soft"
-        style={{ fontFamily: "Manrope", fontStyle: "italic" }}
-      >
-        “{row.reason}”
-      </Text>
-
-      {isAdmin ? (
-        <View className="mt-3 flex-row" style={{ gap: 8 }}>
-          <Pressable
-            onPress={onReject}
-            className="flex-1 rounded-md py-2.5 items-center active:opacity-70"
-            style={{
-              backgroundColor: "#ffffff",
-              borderWidth: 1,
-              borderColor: "#c14a37",
-            }}
-          >
-            <Text
-              className="text-[12px]"
-              style={{ fontFamily: "Manrope-SemiBold", color: "#c14a37" }}
-            >
-              Reject
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={onApprove}
-            className="flex-1 rounded-md py-2.5 items-center active:opacity-70"
-            style={{ backgroundColor: "#56a0a8" }}
-          >
-            <Text
-              className="text-[12px]"
-              style={{ fontFamily: "Manrope-SemiBold", color: "#ffffff" }}
-            >
-              Approve
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
     </View>
   );
 }
