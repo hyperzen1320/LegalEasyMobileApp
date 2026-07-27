@@ -19,8 +19,10 @@ import {
   partnerListHearings,
   partnerUpdateCase,
   partnerGetNoticeTemplate,
+  partnerListCourts,
   ApiError,
   type HearingBucket,
+  type PartnerCourt,
   type PartnerHearingItem,
 } from "../../lib/api";
 import {
@@ -31,6 +33,17 @@ import {
 import { DateField } from "../../components/CaseFields";
 import StatusCombobox from "../../components/cases/StatusCombobox";
 import Sheet from "../../components/Sheet";
+import DisposalFields, {
+  EMPTY_DISPOSAL,
+  todayLocal,
+  type DisposalRecord,
+} from "../../components/cases/DisposalFields";
+import { useDeleteRequestFallback } from "../../components/useDeleteRequestFallback";
+import CourtFilter, {
+  ALL_COURTS,
+  buildCourtOptions,
+  courtKeyOf,
+} from "../../components/hearings/CourtFilter";
 import CnrChip from "../../components/CnrChip";
 import { useAuth } from "../../lib/auth-context";
 import ExportSheet from "../../components/ExportSheet";
@@ -94,6 +107,25 @@ function patchFromSavedCase(
   };
 }
 
+// Disposing a matter is office-admin only on the server (it answers 403
+// with delete_request_required for everyone else), so the disposal record
+// only goes on the wire when the status is actually being set to
+// "Disposed" — and only the admin is shown the fields at all.
+function disposalPayload(
+  status: string,
+  d: DisposalRecord
+): Record<string, unknown> {
+  if (status.trim() !== "Disposed") return {};
+  return {
+    // Default the recorded date to today rather than leaving the archive
+    // undated because someone skipped the field.
+    disposalDate: d.disposalDate || todayLocal(),
+    caStatus: d.caStatus.trim(),
+    disposalRemarks: d.disposalRemarks.trim(),
+    receivedByClient: d.receivedByClient,
+  };
+}
+
 export default function Hearings() {
   const { isPartnerAdmin } = useAuth();
   const router = useRouter();
@@ -133,6 +165,11 @@ export default function Hearings() {
   // Court-wise grouping (the cause-list reading order) + the compact
   // update sheet for scheduled rows.
   const [groupByCourt, setGroupByCourt] = useState(false);
+  // Court roster — only for the serial numbers, so the filter reads the
+  // same as Court Hub. Fetched once; the options themselves come from the
+  // hearings actually loaded.
+  const [courts, setCourts] = useState<PartnerCourt[]>([]);
+  const [courtKey, setCourtKey] = useState<string>(ALL_COURTS);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   // Rows whose hearing was saved in this session, keyed by case id. Applied
   // over the server list so a card keeps showing (and messaging) what was
@@ -141,10 +178,25 @@ export default function Hearings() {
     {}
   );
 
-  const view = useMemo(
+  const allRows = useMemo(
     () =>
       items.map((c) => (savedPatches[c.id] ? { ...c, ...savedPatches[c.id] } : c)),
     [items, savedPatches]
+  );
+
+  // Options come from the WHOLE bucket, so narrowing to one court never
+  // empties the picker you'd need to get back out of it.
+  const courtOptions = useMemo(
+    () => buildCourtOptions(allRows, courts),
+    [allRows, courts]
+  );
+
+  const view = useMemo(
+    () =>
+      courtKey === ALL_COURTS
+        ? allRows
+        : allRows.filter((c) => courtKeyOf(c) === courtKey),
+    [allRows, courtKey]
   );
   const updating = useMemo(
     () => view.find((c) => c.id === updatingId) ?? null,
@@ -189,6 +241,7 @@ export default function Hearings() {
     let alive = true;
     setLoading(true);
     setSavedPatches({});
+    setCourtKey(ALL_COURTS);
     (async () => {
       await load(bucket);
       if (alive) setLoading(false);
@@ -203,6 +256,10 @@ export default function Hearings() {
   useEffect(() => {
     partnerGetNoticeTemplate()
       .then((r) => setTemplate(r.template))
+      .catch(() => {});
+    partnerListCourts()
+      .then((r) => setCourts(r.courts))
+      // No roster just means unnumbered options — not a reason to fail.
       .catch(() => {});
   }, []);
 
@@ -263,8 +320,15 @@ export default function Hearings() {
         />
         <Segmented bucket={bucket} onChange={changeBucket} counts={counts} />
 
-        {bucket !== "pending" && items.length > 0 && !loading ? (
-          <View className="px-5 pt-3 flex-row justify-end">
+        {items.length > 0 && !loading ? (
+          <View className="px-5 pt-3 flex-row justify-end items-center gap-2">
+            <CourtFilter
+              options={courtOptions}
+              selected={courtKey}
+              onSelect={setCourtKey}
+              total={allRows.length}
+            />
+            {bucket !== "pending" ? (
             <Pressable
               onPress={() => setGroupByCourt((v) => !v)}
               hitSlop={6}
@@ -294,6 +358,7 @@ export default function Hearings() {
                 By court
               </Text>
             </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -332,7 +397,14 @@ export default function Hearings() {
             ) : null}
 
             {view.length === 0 ? (
-              <Empty bucket={bucket} />
+              // "Nothing today" and "nothing in THIS court today" are
+              // different facts; saying the first when the second is true
+              // would read as data loss.
+              courtKey !== ALL_COURTS && allRows.length > 0 ? (
+                <EmptyForCourt onClear={() => setCourtKey(ALL_COURTS)} />
+              ) : (
+                <Empty bucket={bucket} />
+              )
             ) : bucket === "pending" ? (
               <View className="gap-4">
                 {view.map((c, i) => (
@@ -344,6 +416,7 @@ export default function Hearings() {
                   >
                     <PendingCard
                       c={c}
+                      isPartnerAdmin={isPartnerAdmin}
                       officeName={officeName}
                       template={template}
                       saved={Boolean(savedPatches[c.id])}
@@ -461,6 +534,7 @@ export default function Hearings() {
 
       <UpdateHearingSheet
         item={updating}
+        isPartnerAdmin={isPartnerAdmin}
         officeName={officeName}
         template={template}
         onClose={() => setUpdatingId(null)}
@@ -481,6 +555,7 @@ export default function Hearings() {
 
 function UpdateHearingSheet({
   item,
+  isPartnerAdmin,
   officeName,
   template,
   onClose,
@@ -488,6 +563,7 @@ function UpdateHearingSheet({
   onDone,
 }: {
   item: PartnerHearingItem | null;
+  isPartnerAdmin: boolean;
   officeName: string;
   template: string;
   onClose: () => void;
@@ -496,10 +572,11 @@ function UpdateHearingSheet({
 }) {
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
-  const [disposalRemarks, setDisposalRemarks] = useState("");
+  const [disposal, setDisposal] = useState<DisposalRecord>(EMPTY_DISPOSAL);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSaved, setHasSaved] = useState(false);
+  const { offerDeleteRequest, deleteRequestSheet } = useDeleteRequestFallback();
   // What the last save put on record. Re-editing compares against this
   // rather than the row we opened with, so the button doesn't stay lit on
   // a value that's already written.
@@ -514,7 +591,7 @@ function UpdateHearingSheet({
     // kept. The disposal note opens only when the status is "Disposed".
     setStatus("");
     setBaseline({ date: d, status: item.status ?? "" });
-    setDisposalRemarks("");
+    setDisposal(EMPTY_DISPOSAL);
     setError(null);
     setSaving(false);
     setHasSaved(false);
@@ -533,19 +610,13 @@ function UpdateHearingSheet({
     setSaving(true);
     setError(null);
     try {
-      const payload: {
-        nextHearingDate: string | null;
-        status?: string;
-        disposalRemarks?: string;
-      } = {
+      const payload: Record<string, unknown> = {
         // Clearing the date is allowed — the matter moves to Pending.
         nextHearingDate: date || null,
+        ...disposalPayload(status, disposal),
       };
       // Blank status keeps whatever's on record; a typed status applies.
       if (status.trim()) payload.status = status.trim();
-      if (status.trim() === "Disposed") {
-        payload.disposalRemarks = disposalRemarks.trim();
-      }
       const res = await partnerUpdateCase(item.id, payload);
       const patch = patchFromSavedCase(item, res.case ?? null);
       setBaseline({
@@ -555,6 +626,12 @@ function UpdateHearingSheet({
       setHasSaved(true);
       onSaved(patch);
     } catch (err) {
+      // Only the admin may dispose or reopen — the server answers with the
+      // delete-request code, so offer that instead of a dead-end error.
+      if (offerDeleteRequest(err)) {
+        setSaving(false);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Couldn't update");
     } finally {
       setSaving(false);
@@ -606,36 +683,34 @@ function UpdateHearingSheet({
           />
         </View>
         {status.trim() === "Disposed" ? (
-          <View className="mt-3.5">
-            <Text
-              className="text-[11px] uppercase mb-1.5"
-              style={{
-                fontFamily: "DMMono-Medium",
-                letterSpacing: 1.2,
-                color: "#8a5821",
-              }}
+          isPartnerAdmin ? (
+            <View className="mt-4">
+              <Text
+                className="text-[10px] uppercase mb-2 text-app-copper-deep"
+                style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+              >
+                Disposal details
+              </Text>
+              <DisposalFields
+                value={disposal}
+                onChange={setDisposal}
+                compact
+              />
+            </View>
+          ) : (
+            <View
+              className="mt-3.5 rounded-md px-3.5 py-2.5"
+              style={{ backgroundColor: "#faf6ee" }}
             >
-              Disposal note
-            </Text>
-            <TextInput
-              value={disposalRemarks}
-              onChangeText={setDisposalRemarks}
-              placeholder="Decree passed / compromised / withdrawn / dismissed…"
-              placeholderTextColor="#a89c80"
-              multiline
-              className="rounded-xl text-[14px] text-app-ink"
-              style={{
-                fontFamily: "Manrope",
-                minHeight: 84,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                textAlignVertical: "top",
-                backgroundColor: "#faf6ee",
-                borderWidth: 1,
-                borderColor: "#e3d9c0",
-              }}
-            />
-          </View>
+              <Text
+                className="text-[12.5px]"
+                style={{ fontFamily: "Manrope", color: "#4d4538" }}
+              >
+                Only the office admin can dispose a matter. Save and
+                you&rsquo;ll be offered a request for them to review.
+              </Text>
+            </View>
+          )
         ) : null}
         <Text
           className="mt-2 text-[11px] text-app-fg-muted"
@@ -745,6 +820,7 @@ function UpdateHearingSheet({
         ) : null}
         <View style={{ height: 16 }} />
       </View>
+      {deleteRequestSheet}
     </Sheet>
   );
 }
@@ -1046,6 +1122,7 @@ function ScheduledRow({
 
 function PendingCard({
   c,
+  isPartnerAdmin,
   officeName,
   template,
   saved,
@@ -1053,6 +1130,7 @@ function PendingCard({
   onDone,
 }: {
   c: PartnerHearingItem;
+  isPartnerAdmin: boolean;
   officeName: string;
   template: string;
   saved: boolean;
@@ -1062,22 +1140,29 @@ function PendingCard({
   const router = useRouter();
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
+  const [disposal, setDisposal] = useState<DisposalRecord>(EMPTY_DISPOSAL);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { offerDeleteRequest, deleteRequestSheet } = useDeleteRequestFallback();
+
+  const isDisposing = status.trim() === "Disposed";
 
   const hasPhone = Boolean(c.clientPhone || c.clientWhatsapp);
   const hasWa = Boolean(c.clientWhatsapp || c.clientPhone);
 
   async function update() {
     setError(null);
-    if (!date) {
+    // A matter being disposed is being closed, not re-listed — requiring a
+    // next date there would be asking for a hearing that will never happen.
+    if (!date && !isDisposing) {
       setError("Please pick a next hearing date.");
       return;
     }
     setSaving(true);
     try {
-      const payload: { nextHearingDate: string; status?: string } = {
-        nextHearingDate: date,
+      const payload: Record<string, unknown> = {
+        nextHearingDate: date || null,
+        ...disposalPayload(status, disposal),
       };
       // Blank status keeps the matter's current status; a typed status applies.
       if (status.trim()) payload.status = status.trim();
@@ -1087,6 +1172,9 @@ function PendingCard({
       // what refetches and lets the matter leave Pending.
       onSaved(patchFromSavedCase(c, res.case ?? null));
     } catch (err) {
+      // Disposing is admin-only server-side — offer the request rather
+      // than a dead end.
+      if (offerDeleteRequest(err)) return;
       setError(err instanceof ApiError ? err.message : "Couldn't update");
     } finally {
       setSaving(false);
@@ -1195,6 +1283,48 @@ function PendingCard({
           onChange={setStatus}
           multiline
         />
+
+        {/* Setting a matter to Disposed closes it — the disposal record
+            belongs here, at the moment that's decided, not on a separate
+            trip to the case page. */}
+        {isDisposing ? (
+          isPartnerAdmin ? (
+            <View
+              className="rounded-xl px-3.5 py-3"
+              style={{
+                backgroundColor: "#faf6ee",
+                borderWidth: 1,
+                borderColor: "#e3d9c0",
+              }}
+            >
+              <Text
+                className="text-[10px] uppercase mb-2 text-app-copper-deep"
+                style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+              >
+                Disposal details
+              </Text>
+              <DisposalFields
+                value={disposal}
+                onChange={setDisposal}
+                compact
+              />
+            </View>
+          ) : (
+            <View
+              className="rounded-md px-3.5 py-2.5"
+              style={{ backgroundColor: "#faf6ee" }}
+            >
+              <Text
+                className="text-[12.5px]"
+                style={{ fontFamily: "Manrope", color: "#4d4538" }}
+              >
+                Only the office admin can dispose a matter. Update and
+                you&rsquo;ll be offered a request for them to review.
+              </Text>
+            </View>
+          )
+        ) : null}
+
         {error ? (
           <Text
             className="text-[12px]"
@@ -1253,6 +1383,8 @@ function PendingCard({
           hasNumber={hasWa}
         />
       </View>
+
+      {deleteRequestSheet}
 
       {saved ? (
         <Pressable
@@ -1474,6 +1606,44 @@ async function openWhatsApp(
 }
 
 /* ─── Empty ─── */
+
+function EmptyForCourt({ onClear }: { onClear: () => void }) {
+  return (
+    <View className="items-center pt-12">
+      <View
+        className="h-12 w-12 items-center justify-center rounded-full"
+        style={{ backgroundColor: "#efe5d0" }}
+      >
+        <Feather name="home" size={20} color="#8a5821" />
+      </View>
+      <Text
+        className="mt-4 text-[20px] font-semibold tracking-tight text-app-ink text-center"
+        style={{ fontFamily: "Crimson-SemiBold" }}
+      >
+        Nothing in this court.
+      </Text>
+      <Text
+        className="mt-1.5 text-[12px] text-app-fg-muted text-center max-w-[280px]"
+        style={{ fontFamily: "Manrope" }}
+      >
+        Other courts have matters listed — clear the filter to see them.
+      </Text>
+      <Pressable
+        onPress={onClear}
+        className="mt-4 rounded-full px-4 py-2 active:opacity-80"
+        style={{ backgroundColor: "#0a1124" }}
+        accessibilityRole="button"
+      >
+        <Text
+          className="text-[12px]"
+          style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+        >
+          Show all courts
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
 
 function Empty({ bucket }: { bucket: HearingBucket }) {
   const messages: Record<HearingBucket, { title: string; body: string }> = {
