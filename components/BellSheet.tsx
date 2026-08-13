@@ -32,14 +32,22 @@ import { useNotificationCount } from "../lib/notification-count";
 //  - Requests — admins see every pending delete request in chambers
 //    with inline Approve / Reject actions; non-admins see their own
 //    requests across statuses so they can track what they've asked for.
-//  - Activity — most recent partner-wide activity, twenty rows. The
-//    full filterable feed is its own screen (PR-D); this is the
-//    glance-able subset surfaced from anywhere with a bell icon.
+//  - Activity — partner-wide activity, a page at a time, with the full
+//    filterable feed a tap away on its own screen. Admin-only, because
+//    the endpoint behind it is: the office audit trail isn't a junior's
+//    to read, and asking for it as one used to 403 the whole sheet and
+//    take the Requests tab down with it.
 //
 // Polls every 12s while open so an admin reviewing a queue sees new
 // requests land without re-opening. Pauses when closed.
 
 const POLL_INTERVAL_MS = 12_000;
+// Fifty rows, not twenty-five. Chambers reported that notifications "only
+// stay for one day" no matter what retention was set to — but nothing was
+// being pruned: twenty-five rows simply IS about a day for a busy office,
+// and there was no way to ask for the twenty-sixth. Hence the page size
+// and the Load more below it.
+const ACTIVITY_PAGE = 50;
 
 type Props = {
   visible: boolean;
@@ -56,9 +64,16 @@ export default function BellSheet({ visible, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("requests");
   const [requests, setRequests] = useState<DeleteRequestRow[]>([]);
   const [activity, setActivity] = useState<ActivityHistoryRow[]>([]);
+  const [activityCursor, setActivityCursor] = useState<string | null>(null);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // How many pages of ledger are on screen. Once it's more than one the
+  // 12-second poll leaves the Activity tab alone — refetching page one
+  // would collapse the history back under the reader's thumb.
+  const pagesRef = useRef(1);
   // Track which requests the admin has acted on so the row can hide
   // immediately, before the next poll confirms — feels responsive.
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
@@ -85,13 +100,24 @@ export default function BellSheet({ visible, onClose }: Props) {
         const requestsP = isPartnerAdmin
           ? partnerListDeleteRequests({ status: "pending", limit: 30 })
           : partnerListDeleteRequests({ limit: 30 });
+        // The ledger is admin-only server-side, and a poll that would
+        // rewind a reader's place in it isn't worth making.
+        const wantActivity =
+          isPartnerAdmin && (mode !== "poll" || pagesRef.current === 1);
         const [req, act] = await Promise.all([
           requestsP,
-          partnerActivityHistory({ limit: 25 }),
+          wantActivity
+            ? partnerActivityHistory({ limit: ACTIVITY_PAGE })
+            : null,
         ]);
         if (!aliveRef.current) return;
         setRequests(req.requests);
-        setActivity(act.activity);
+        if (act) {
+          pagesRef.current = 1;
+          setActivity(act.activity);
+          setActivityCursor(act.nextCursor);
+          setActivityHasMore(act.hasMore);
+        }
         setError(null);
       } catch (err) {
         if (!aliveRef.current) return;
@@ -112,11 +138,33 @@ export default function BellSheet({ visible, onClose }: Props) {
   // on close. Resetting state on close keeps a fresh load every time
   // the user pulls the sheet up — the data is light enough that a
   // re-fetch is cheaper than staleness.
+  const loadMoreActivity = useCallback(async () => {
+    if (!activityCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await partnerActivityHistory({
+        limit: ACTIVITY_PAGE,
+        before: activityCursor,
+      });
+      if (!aliveRef.current) return;
+      pagesRef.current += 1;
+      setActivity((prev) => [...prev, ...res.activity]);
+      setActivityCursor(res.nextCursor);
+      setActivityHasMore(res.hasMore);
+    } catch {
+      // Keep what's already on screen; the button stays for a retry.
+    } finally {
+      if (aliveRef.current) setLoadingMore(false);
+    }
+  }, [activityCursor, loadingMore]);
+
   useEffect(() => {
     if (!visible) {
       setLoading(true);
       setRejectingId(null);
       setRemovingIds(new Set());
+      // A fresh open starts at the top of the ledger again.
+      pagesRef.current = 1;
       return;
     }
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -220,11 +268,15 @@ export default function BellSheet({ visible, onClose }: Props) {
           badge={pendingCount}
           onPress={() => setTab("requests")}
         />
-        <TabButton
-          label="Activity"
-          active={tab === "activity"}
-          onPress={() => setTab("activity")}
-        />
+        {/* Activity is the office's audit trail — admin-only, here as it
+            is on the server. */}
+        {isPartnerAdmin ? (
+          <TabButton
+            label="Activity"
+            active={tab === "activity"}
+            onPress={() => setTab("activity")}
+          />
+        ) : null}
       </View>
 
       {error ? (
@@ -248,7 +300,7 @@ export default function BellSheet({ visible, onClose }: Props) {
           <View style={styles.center}>
             <ActivityIndicator color="#c5853a" />
           </View>
-        ) : tab === "requests" ? (
+        ) : tab === "requests" || !isPartnerAdmin ? (
           <RequestsTab
             isAdmin={isPartnerAdmin}
             rows={visibleRequests}
@@ -261,9 +313,16 @@ export default function BellSheet({ visible, onClose }: Props) {
         ) : (
           <ActivityTab
             rows={activity}
+            hasMore={activityHasMore}
+            loadingMore={loadingMore}
+            onLoadMore={loadMoreActivity}
             onOpenBoard={(boardId) => {
               onClose();
               router.push(`/(home)/workflow/${boardId}` as never);
+            }}
+            onOpenLedger={() => {
+              onClose();
+              router.push("/(home)/activity" as never);
             }}
           />
         )}
@@ -511,10 +570,18 @@ function StatusPill({ status }: { status: DeleteRequestRow["status"] }) {
 
 function ActivityTab({
   rows,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onOpenBoard,
+  onOpenLedger,
 }: {
   rows: ActivityHistoryRow[];
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   onOpenBoard: (boardId: string) => void;
+  onOpenLedger: () => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -557,6 +624,41 @@ function ActivityTab({
           ) : null}
         </Pressable>
       ))}
+
+      {hasMore ? (
+        <Pressable
+          onPress={onLoadMore}
+          disabled={loadingMore}
+          style={styles.loadMore}
+          accessibilityRole="button"
+          accessibilityLabel="Load older activity"
+        >
+          {loadingMore ? (
+            <ActivityIndicator size="small" color="#8a5821" />
+          ) : (
+            <Feather name="chevron-down" size={14} color="#8a5821" />
+          )}
+          <Text style={styles.loadMoreText}>
+            {loadingMore ? "Loading…" : "Load older"}
+          </Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.ledgerEnd}>
+          That&rsquo;s the whole ledger the office is keeping.
+        </Text>
+      )}
+
+      {/* The full feed has date ranges, an area filter and search. This
+          drawer is the glance; that screen is the record. */}
+      <Pressable
+        onPress={onOpenLedger}
+        style={styles.ledgerLink}
+        accessibilityRole="button"
+        accessibilityLabel="Open Office Activity"
+      >
+        <Text style={styles.ledgerLinkText}>See the full ledger</Text>
+        <Feather name="arrow-right" size={13} color="#8a5821" />
+      </Pressable>
     </View>
   );
 }
@@ -865,6 +967,43 @@ const styles = StyleSheet.create({
     color: "#7a7060",
     letterSpacing: 0.4,
     marginTop: 3,
+  },
+  loadMore: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e3d9c0",
+  },
+  loadMoreText: {
+    fontFamily: "Manrope-SemiBold",
+    fontSize: 12.5,
+    color: "#8a5821",
+  },
+  ledgerEnd: {
+    fontFamily: "Manrope",
+    fontSize: 11.5,
+    color: "#a89c80",
+    textAlign: "center",
+    marginTop: 10,
+  },
+  ledgerLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingVertical: 10,
+  },
+  ledgerLinkText: {
+    fontFamily: "Manrope-SemiBold",
+    fontSize: 12.5,
+    color: "#8a5821",
   },
   empty: {
     paddingVertical: 36,
