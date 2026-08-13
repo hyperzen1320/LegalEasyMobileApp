@@ -17,12 +17,12 @@ const OUT = path.join(__dirname, "..", "assets");
 
 // The "L" monogram as plain rectangles (stem + foot) with a brass dot —
 // the TopBar BrandMark, drawn big. Group is positioned by translate.
-function monogram({ scale = 1, dx = 0, dy = 0, paper = PAPER }) {
+function monogram({ scale = 1, dx = 0, dy = 0, paper = PAPER, brass = BRASS }) {
   return `
   <g transform="translate(${dx} ${dy}) scale(${scale})">
     <rect x="400" y="312" width="116" height="388" fill="${paper}"/>
     <rect x="400" y="596" width="264" height="104" fill="${paper}"/>
-    <circle cx="652" cy="352" r="34" fill="${BRASS}"/>
+    <circle cx="652" cy="352" r="34" fill="${brass}"/>
   </g>`;
 }
 
@@ -70,8 +70,34 @@ const splashSvg = `
   ${monogram({ scale: 0.86, dx: 60, dy: 78 })}
 </svg>`;
 
+// Android status-bar notification icon. The system reads this image's
+// ALPHA CHANNEL ONLY and tints the silhouette with the accent colour from
+// app.json — anything carrying colour or a background renders as a plain
+// grey square in the status bar. So: the monogram in solid white on
+// transparent, centred, nothing else. It's the mark that appears the
+// moment a Senior Desk message lands.
+//
+// Centring maths: the monogram occupies x 400–686, y 312–700, so its
+// centre is (543, 506); at scale s it lands at (dx + 543s, dy + 506s),
+// and we want (512, 512) on a 1024 canvas.
+const NOTIF_SCALE = 2.11;
+const notificationSvg = `
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  ${monogram({
+    scale: NOTIF_SCALE,
+    dx: 512 - 543 * NOTIF_SCALE,
+    dy: 512 - 506 * NOTIF_SCALE,
+    paper: "#ffffff",
+    brass: "#ffffff",
+  })}
+</svg>`;
+
 async function run() {
   await sharp(Buffer.from(iconSvg)).png().toFile(path.join(OUT, "icon.png"));
+  await sharp(Buffer.from(notificationSvg))
+    .resize(96, 96)
+    .png()
+    .toFile(path.join(OUT, "notification-icon.png"));
   await sharp(Buffer.from(adaptiveSvg))
     .png()
     .toFile(path.join(OUT, "adaptive-icon.png"));
@@ -82,7 +108,9 @@ async function run() {
     .resize(48, 48)
     .png()
     .toFile(path.join(OUT, "favicon.png"));
-  console.log("brand assets written: icon, adaptive-icon, splash-icon, favicon");
+  console.log(
+    "brand assets written: icon, adaptive-icon, splash-icon, favicon, notification-icon"
+  );
 }
 
 run().catch((e) => {

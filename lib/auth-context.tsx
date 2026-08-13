@@ -18,6 +18,7 @@ import {
   type MobilePartner,
 } from "./api";
 import { readFeatures, type FeatureMap } from "./features";
+import { registerPushToken, resetBadge, revokePushToken } from "./push";
 
 // Single source of truth for "who is signed in". Replaces the five-plus
 // screens that each called getMe() on focus and stored the result in
@@ -87,9 +88,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // This device's push address, held so sign-out can hand it back. A
+  // shared office phone that kept a signed-out advocate's token would
+  // keep showing their chambers' notifications to whoever picked it up.
+  const pushTokenRef = useRef<string | null>(null);
+  // Which user we've registered for. Re-registering on every /me refresh
+  // would be a wasted round-trip on each focus; re-registering when a
+  // DIFFERENT advocate signs in on the same handset is the point.
+  const pushForUserRef = useRef<string | null>(null);
+
   const applyMe = useCallback(
     (data: { user: MobileUser; partner: MobilePartner | null }) => {
       if (!aliveRef.current) return;
+      // Only chambers users get pushes; the global admin shell has no
+      // notifications of its own.
+      if (
+        data.user.userType !== "global_admin" &&
+        pushForUserRef.current !== data.user.id
+      ) {
+        pushForUserRef.current = data.user.id;
+        void registerPushToken().then((token) => {
+          pushTokenRef.current = token;
+        });
+      }
       setState({
         status: "authenticated",
         user: data.user,
@@ -159,6 +180,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // Hand the push address back BEFORE clearing the session token — the
+    // revoke call is authenticated, and after apiLogout there's nothing
+    // to authenticate it with.
+    await revokePushToken(pushTokenRef.current);
+    pushTokenRef.current = null;
+    pushForUserRef.current = null;
+    resetBadge();
     await apiLogout();
     applyGuest(null);
   }, [applyGuest]);

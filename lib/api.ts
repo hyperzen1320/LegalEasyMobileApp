@@ -1999,3 +1999,29 @@ export async function partnerUpdateSettings(
   });
 }
 
+
+/* ─── Push tokens ─────────────────────────────────────────────────────
+   The address this device is reachable at. Registered after sign-in,
+   handed back on sign-out — a shared office phone that kept a signed-out
+   advocate's token would keep showing their chambers' notifications to
+   whoever picked it up next. */
+
+export async function partnerRegisterPushToken(payload: {
+  token: string;
+  platform: "ios" | "android";
+  deviceName?: string;
+}): Promise<{ ok: true }> {
+  return api("/api/app/push", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function partnerRevokePushToken(
+  token: string
+): Promise<{ ok: true }> {
+  return api("/api/app/push", {
+    method: "DELETE",
+    body: JSON.stringify({ token }),
+  });
+}
