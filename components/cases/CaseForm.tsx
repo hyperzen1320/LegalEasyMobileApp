@@ -104,14 +104,19 @@ export default function CaseForm({
   }
 
   function handleSubmit() {
+    // File number is the office's own reference and is often assigned days
+    // after the matter is opened — insisting on it up front meant typing a
+    // placeholder and meaning to come back, which nobody does. The server
+    // has always defaulted it to blank; only this form was demanding it.
     const m = new Set<string>();
-    if (!fileNo.trim()) m.add("fileNo");
     if (!caseNo.trim()) m.add("caseNo");
     if (!clientName.trim()) m.add("clientName");
     if (!courtName.trim()) m.add("courtName");
     if (m.size > 0) {
       setMissing(m);
-      setValidationError("Please fill the four required fields before saving.");
+      setValidationError(
+        "Please fill the three required fields before saving."
+      );
       return;
     }
     setMissing(new Set());
@@ -165,14 +170,9 @@ export default function CaseForm({
       <Card>
         <Field
           label="File Number"
-          required
           value={fileNo}
-          onChangeText={(v) => {
-            setFileNo(v);
-            clearMissing("fileNo");
-          }}
+          onChangeText={setFileNo}
           placeholder="F-2025/001"
-          invalid={missing.has("fileNo")}
         />
         <Field
           label="Case Number"
