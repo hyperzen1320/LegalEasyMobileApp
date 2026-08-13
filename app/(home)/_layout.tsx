@@ -50,6 +50,15 @@ export default function HomeLayout() {
 
   return (
     <Tabs
+      // Back goes to the tab you were last on, not to Dashboard.
+      //
+      // Most of this app's screens — Work Flow, Senior Desk, Court Hub,
+      // Attendance, the lot — are tabs with `href: null`, reached from the
+      // More menu. With the navigator's default ("firstRoute"), backing out
+      // of any of them dropped you on Dashboard, so More → Work Flow → back
+      // meant three taps to get back to where you started. "history" walks
+      // the tabs actually visited instead.
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         // Cross-fade + drift between tabs instead of a hard card swap.
@@ -72,10 +81,10 @@ export default function HomeLayout() {
           height: 66 + insets.bottom,
           paddingBottom: Math.max(insets.bottom, 12),
         },
-        // 9.5px + tight tracking keeps all five labels on one line on the
-        // narrowest phones.
+        // Four tabs instead of five leaves room to read them: 10.5px still
+        // keeps every label on one line on the narrowest phones.
         tabBarLabelStyle: {
-          fontSize: 9.5,
+          fontSize: 10.5,
           fontFamily: "DMMono-Medium",
           letterSpacing: 0.6,
           textTransform: "uppercase",
@@ -144,15 +153,11 @@ export default function HomeLayout() {
       <Tabs.Screen name="clients" options={{ href: null }} />
       <Tabs.Screen name="courts" options={{ href: null }} />
       <Tabs.Screen name="ai" options={{ href: null }} />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          tabBarLabel: "Profile",
-          tabBarIcon: ({ color }) => (
-            <Feather name="user" size={20} color={color} />
-          ),
-        }}
-      />
+      {/* Profile moved off the bar to the Dashboard's top-right, beside
+          the bell — a fifth tab for a screen visited once a month was
+          crowding the four that get used every day. More → My Profile is
+          still the second door. */}
+      <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="users" options={{ href: null }} />
       <Tabs.Screen name="workflow" options={{ href: null }} />
       <Tabs.Screen name="senior-desk" options={{ href: null }} />

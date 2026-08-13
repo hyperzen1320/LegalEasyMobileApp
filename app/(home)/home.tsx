@@ -24,6 +24,7 @@ import { isFeatureEnabled, type FeatureKey } from "../../lib/features";
 import { useNotificationCount } from "../../lib/notification-count";
 import { LiveOverview } from "../../components/LiveOverview";
 import BellSheet from "../../components/BellSheet";
+import { caseHref } from "../../components/cases/useCaseOrigin";
 
 export default function PartnerHome() {
   const { user, partner, isPartnerAdmin } = useAuth();
@@ -87,6 +88,7 @@ export default function PartnerHome() {
       <SafeAreaView className="flex-1" edges={["top"]}>
         <TopBar
           partnerName={partner?.name ?? "Your chambers"}
+          initials={initialsOf(user?.firstName, user?.lastName)}
           onOpenBell={() => setBellOpen(true)}
         />
         <ScrollView
@@ -139,11 +141,14 @@ export default function PartnerHome() {
 /* ───────── Top bar ───────── */
 function TopBar({
   partnerName,
+  initials,
   onOpenBell,
 }: {
   partnerName: string;
+  initials: string;
   onOpenBell: () => void;
 }) {
+  const router = useRouter();
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
@@ -172,39 +177,69 @@ function TopBar({
           {partnerName}
         </Text>
       </View>
-      <View className="relative">
-        <Pressable
-          onPress={onOpenBell}
-          className="h-10 w-10 items-center justify-center rounded-full active:opacity-50"
-          style={{ backgroundColor: "rgba(10,17,36,0.05)" }}
-          accessibilityLabel={
-            count > 0
-              ? `Notifications, ${count} pending`
-              : "Notifications"
-          }
-        >
-          <Feather name="bell" size={18} color="#0a1124" />
-        </Pressable>
-        {count > 0 ? (
-          <View
-            className="absolute -right-0.5 -top-0.5 min-w-[16px] h-[16px] px-1 items-center justify-center rounded-full"
-            style={{ backgroundColor: "#c14a37" }}
+      <View className="flex-row items-center" style={{ gap: 8 }}>
+        <View className="relative">
+          <Pressable
+            onPress={onOpenBell}
+            className="h-10 w-10 items-center justify-center rounded-full active:opacity-50"
+            style={{ backgroundColor: "rgba(10,17,36,0.05)" }}
+            accessibilityLabel={
+              count > 0
+                ? `Notifications, ${count} pending`
+                : "Notifications"
+            }
           >
-            <Text
-              className="text-[9px] tabular-nums"
-              style={{
-                fontFamily: "DMMono-Medium",
-                color: "#f5ebd6",
-                letterSpacing: 0.4,
-              }}
+            <Feather name="bell" size={18} color="#0a1124" />
+          </Pressable>
+          {count > 0 ? (
+            <View
+              className="absolute -right-0.5 -top-0.5 min-w-[16px] h-[16px] px-1 items-center justify-center rounded-full"
+              style={{ backgroundColor: "#c14a37" }}
             >
-              {count > 99 ? "99+" : count}
-            </Text>
-          </View>
-        ) : null}
+              <Text
+                className="text-[9px] tabular-nums"
+                style={{
+                  fontFamily: "DMMono-Medium",
+                  color: "#f5ebd6",
+                  letterSpacing: 0.4,
+                }}
+              >
+                {count > 99 ? "99+" : count}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Profile, off the tab bar and onto the corner it belongs in —
+            the advocate's own initials, next to the bell. */}
+        <Pressable
+          onPress={() => router.push("/(home)/profile")}
+          className="h-10 w-10 items-center justify-center rounded-full active:opacity-70"
+          style={{ backgroundColor: "#0a1124" }}
+          accessibilityRole="button"
+          accessibilityLabel="My profile"
+        >
+          <Text
+            className="text-[13px] uppercase"
+            style={{ fontFamily: "Crimson-SemiBold", color: "#ddb074" }}
+          >
+            {initials}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
+}
+
+// Two letters for the profile button. A placeholder last name like "—"
+// contributes nothing (same rule the greeting uses), and an account with
+// no usable name at all gets a mark rather than an empty circle.
+function initialsOf(first?: string, last?: string): string {
+  const pick = (s?: string) => {
+    const ch = (s ?? "").trim().charAt(0);
+    return ch && !/[\s.\-–—_]/.test(ch) ? ch.toUpperCase() : "";
+  };
+  return pick(first) + pick(last) || "·";
 }
 
 // Greeting shows the advocate's full name (first + last); a stray placeholder
@@ -564,7 +599,9 @@ function BoardRow({
 
   return (
     <Pressable
-      onPress={() => router.push(`/(home)/cases/${c.id}` as never)}
+      // Say where this came from, so backing out of the dossier returns
+      // to the dashboard rather than stranding the reader in the vault.
+      onPress={() => router.push(caseHref(c.id, "home") as never)}
       className="rounded-xl bg-app-paper p-4 active:opacity-90"
       style={{
         shadowColor: "#0a1124",
