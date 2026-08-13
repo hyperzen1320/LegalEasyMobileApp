@@ -1,6 +1,8 @@
 import { type ReactNode } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   View,
   Text,
@@ -75,6 +77,16 @@ export default function Sheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
+      {/* Keyboard-safe wrapper. The backdrop below already anchors the
+          sheet to the bottom, so shrinking this by the keyboard's height
+          ("height" on Android) or padding it out ("padding" on iOS)
+          re-anchors the sheet above the keyboard — which is what any
+          sheet carrying a text field needs, and what every one of them
+          used to lack. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
       {/* Backdrop. Touch anywhere outside the sheet to dismiss. */}
       <Pressable
         accessibilityLabel="Close sheet"
@@ -132,6 +144,7 @@ export default function Sheet({
           {children}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

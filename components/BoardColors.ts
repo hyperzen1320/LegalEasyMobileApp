@@ -43,8 +43,26 @@ export const BOARD_COLOR_STYLES: Record<
     accent: "#c5853a",
     text: "#f5ebd6",
   },
+  slate: {
+    gradient: ["#5a6b7a", "#2c3947"],
+    accent: "#d8e2ea",
+    text: "#f4ede0",
+  },
+  olive: {
+    gradient: ["#7d8347", "#4a4f25"],
+    accent: "#e8eac6",
+    text: "#f4ede0",
+  },
+  indigo: {
+    gradient: ["#544f92", "#2c2a55"],
+    accent: "#dcd9f2",
+    text: "#f4ede0",
+  },
 };
 
+// Swatch order. Must stay in step with the server's BOARD_COLORS
+// (legaleasy/src/lib/board-defaults.ts) — a colour this app offers but the
+// API doesn't know is a save that fails validation.
 export const BOARD_COLORS: BoardColor[] = [
   "forest",
   "copper",
@@ -53,4 +71,7 @@ export const BOARD_COLORS: BoardColor[] = [
   "ochre",
   "plum",
   "ink",
+  "slate",
+  "olive",
+  "indigo",
 ];

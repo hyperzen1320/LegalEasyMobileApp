@@ -9,6 +9,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
@@ -300,11 +301,14 @@ export default function Workflow() {
           onClose={() => setSettingsFor(null)}
           boardId={settingsFor.id}
           title={settingsFor.title}
+          description={settingsFor.description}
           color={settingsFor.color}
-          onSaved={({ title, color }) => {
+          onSaved={({ title, description, color }) => {
             setBoards((prev) =>
               prev.map((b) =>
-                b.id === settingsFor.id ? { ...b, title, color } : b
+                b.id === settingsFor.id
+                  ? { ...b, title, description, color }
+                  : b
               )
             );
             setSettingsFor(null);
@@ -421,7 +425,7 @@ function BoardTile({
         elevation: 1,
       }}
     >
-      {/* Colour swatch with the board's initial — the Trello-style row mark */}
+      {/* Colour swatch with the board's initial — the row's mark */}
       <LinearGradient
         colors={styles.gradient as [string, string]}
         start={{ x: 0, y: 0 }}
@@ -586,18 +590,26 @@ function CreateBoardModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable
-        onPress={onClose}
-        className="flex-1"
-        style={{ backgroundColor: "rgba(10,17,36,0.55)" }}
+      {/* The keyboard-safe wrapper sits OUTSIDE the backdrop and the sheet
+          hangs off `mt-auto`, which is the arrangement the comboboxes
+          already use. Android gets "height": the wrapper shrinks by the
+          keyboard, the backdrop shrinks with it, and the sheet re-anchors
+          to the new bottom. It used to pass `undefined` on Android, so
+          nothing moved and the Description field — the last one in the
+          sheet — typed away underneath the keyboard. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1, justifyContent: "flex-end" }}
+        <Pressable
+          onPress={onClose}
+          className="flex-1"
+          style={{ backgroundColor: "rgba(10,17,36,0.55)" }}
         >
           <View
-            className="rounded-t-3xl bg-app-paper px-5 pt-3 pb-8"
+            className="mt-auto rounded-t-3xl bg-app-paper px-5 pt-3 pb-8"
             style={{
+              maxHeight: "100%",
               shadowColor: "#0a1124",
               shadowOpacity: 0.2,
               shadowRadius: 20,
@@ -611,67 +623,79 @@ function CreateBoardModal({
               className="self-center mb-3 h-1.5 w-12 rounded-full"
               style={{ backgroundColor: "#e3d9c0" }}
             />
-            <Text
-              className="text-[10px] uppercase text-app-copper-deep mb-2"
-              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+            {/* Scrollable so ten swatches and two fields still fit once the
+                keyboard has taken half the screen. The buttons stay below
+                it, always reachable. */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
             >
-              New board
-            </Text>
-            <Text
-              className="text-[22px] font-semibold tracking-tight text-app-ink mb-4"
-              style={{ fontFamily: "Crimson-SemiBold" }}
-            >
-              Pick a colour, give it a name
-            </Text>
-
-            {/* Colour swatches */}
-            <View className="flex-row flex-wrap gap-2 mb-4">
-              {BOARD_COLORS.map((c) => {
-                const styles = BOARD_COLOR_STYLES[c];
-                const active = color === c;
-                return (
-                  <Pressable
-                    key={c}
-                    onPress={() => setColor(c)}
-                    className="active:opacity-80"
-                    style={{
-                      transform: [{ scale: active ? 1.05 : 1 }],
-                    }}
-                  >
-                    <LinearGradient
-                      colors={styles.gradient as [string, string]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        height: 44,
-                        width: 56,
-                        borderRadius: 8,
-                        borderWidth: active ? 2 : 0,
-                        borderColor: active ? "#c5853a" : "transparent",
-                      }}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Field label="Title" value={title} onChangeText={setTitle} />
-            <View style={{ height: 12 }} />
-            <Field
-              label="Description"
-              value={description}
-              onChangeText={setDescription}
-              placeholder="What kind of work goes here?"
-            />
-
-            {error ? (
               <Text
-                className="mt-3 text-[12px]"
-                style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                className="text-[10px] uppercase text-app-copper-deep mb-2"
+                style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
               >
-                {error}
+                New board
               </Text>
-            ) : null}
+              <Text
+                className="text-[22px] font-semibold tracking-tight text-app-ink mb-4"
+                style={{ fontFamily: "Crimson-SemiBold" }}
+              >
+                Pick a colour, give it a name
+              </Text>
+
+              {/* Colour swatches */}
+              <View className="flex-row flex-wrap gap-2 mb-4">
+                {BOARD_COLORS.map((c) => {
+                  const styles = BOARD_COLOR_STYLES[c];
+                  const active = color === c;
+                  return (
+                    <Pressable
+                      key={c}
+                      onPress={() => setColor(c)}
+                      className="active:opacity-80"
+                      style={{
+                        transform: [{ scale: active ? 1.05 : 1 }],
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Colour ${c}`}
+                    >
+                      <LinearGradient
+                        colors={styles.gradient as [string, string]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{
+                          height: 44,
+                          width: 56,
+                          borderRadius: 8,
+                          borderWidth: active ? 2 : 0,
+                          borderColor: active ? "#c5853a" : "transparent",
+                        }}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Field label="Title" value={title} onChangeText={setTitle} />
+              <View style={{ height: 12 }} />
+              <Field
+                label="Description"
+                value={description}
+                onChangeText={setDescription}
+                placeholder="What kind of work goes here?"
+              />
+
+              {error ? (
+                <Text
+                  className="mt-3 text-[12px]"
+                  style={{ fontFamily: "Manrope", color: "#c14a37" }}
+                >
+                  {error}
+                </Text>
+              ) : null}
+            </ScrollView>
 
             <View className="mt-5 flex-row gap-3">
               <Pressable
@@ -727,8 +751,8 @@ function CreateBoardModal({
               </Pressable>
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

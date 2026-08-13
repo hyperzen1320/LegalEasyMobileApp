@@ -778,11 +778,15 @@ export default function BoardDetail() {
           onClose={() => setSettingsOpen(false)}
           boardId={boardId}
           title={board.title}
+          description={board.description}
           color={board.color}
-          onSaved={({ title, color }) =>
+          onSaved={({ title, description, color }) =>
             setData((prev) =>
               prev
-                ? { ...prev, board: { ...prev.board, title, color } }
+                ? {
+                    ...prev,
+                    board: { ...prev.board, title, description, color },
+                  }
                 : prev
             )
           }
@@ -1138,7 +1142,7 @@ function ListColumn({
             style={{ gap: 6 }}
           >
             <Text
-              className="flex-1 text-[14px] tracking-tight text-app-ink"
+              className="flex-1 text-[16px] tracking-tight text-app-ink"
               style={{ fontFamily: "Crimson-SemiBold" }}
               numberOfLines={1}
             >
@@ -1150,7 +1154,7 @@ function ListColumn({
                 style={{ backgroundColor: "#efe5d0" }}
               >
                 <Text
-                  className="text-[10px] tabular-nums"
+                  className="text-[11px] tabular-nums"
                   style={{
                     fontFamily: "DMMono-Medium",
                     color: "#4d4538",

@@ -909,6 +909,9 @@ export async function partnerDeletePrompt(
 
 /* ─── Workflow boards ─── */
 
+// Mirrors the server enum (legaleasy/src/lib/board-defaults.ts). The last
+// three were added for offices that had more boards than tellable-apart
+// tiles — a cool grey, a muted olive and a violet.
 export type BoardColor =
   | "forest"
   | "copper"
@@ -916,7 +919,10 @@ export type BoardColor =
   | "terracotta"
   | "ochre"
   | "plum"
-  | "ink";
+  | "ink"
+  | "slate"
+  | "olive"
+  | "indigo";
 
 export type PartnerBoard = {
   id: string;

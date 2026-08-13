@@ -49,7 +49,7 @@ const TUTORIAL: {
   {
     icon: "layout",
     title: "Work Flow",
-    body: "Trello-style boards for office processes. Open a board to move cards and track each matter's progress.",
+    body: "Boards for the office's own processes. Open a board to move cards and track each matter's progress.",
   },
 ];
 
