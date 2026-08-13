@@ -14,7 +14,14 @@ import { DateField } from "../CaseFields";
 // Keeping the fields here means the two places can't drift on what a
 // disposal record contains.
 
-export const CA_OPTIONS = ["Applied", "Ready", "Delivered"];
+// The certified-copy chase, in the order it actually runs: nothing filed
+// yet → applied for → ready at the counter → collected. "Not yet" sits
+// last because it's the one an office picks to say the chase hasn't
+// started, and it reads oddly at the front of a progression.
+export const CA_OPTIONS = ["Applied", "Ready", "Delivered", "Not yet"];
+
+/** Placeholder for the free-text field that backs the chips. */
+export const CA_PLACEHOLDER = CA_OPTIONS.join(" / ");
 
 export type DisposalRecord = {
   disposalDate: string;
@@ -100,7 +107,7 @@ export default function DisposalFields({
       <TextInput
         value={value.caStatus}
         onChangeText={(v) => set("caStatus", v)}
-        placeholder="Applied / Ready / Delivered"
+        placeholder={CA_PLACEHOLDER}
         placeholderTextColor="#a89c80"
         className="rounded-xl bg-app-paper px-3.5 py-3 text-[14px] text-app-ink"
         style={{

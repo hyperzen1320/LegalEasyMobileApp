@@ -5,21 +5,25 @@ import Sheet from "../Sheet";
 import { compareCourts } from "../../lib/court-order";
 import type { PartnerCourt, PartnerHearingItem } from "../../lib/api";
 
-// Narrow the cause-list to one court.
+// Narrow the cause-list to a set of courts.
 //
 // Hearing rows carry courtName + courtPlace but no courtId, so the options
 // are built from the courts the LOADED bucket actually references and
-// matched on that same "Name, Place" key the by-court grouping already
-// uses. Two consequences worth having: every row in the list is reachable,
-// and a court with nothing listed today never appears as a dead option.
+// matched on that same "Name, Place" key. Two consequences worth having:
+// every row in the list is reachable, and a court with nothing listed
+// today never appears as a dead option.
+//
+// Selection is a SET, not a single key: an advocate sitting in two courts
+// on the same morning wants both cause-lists at once, and picking them one
+// at a time meant reading the day twice. An empty set means "all courts",
+// so there is no sentinel value to keep in sync — nothing selected is the
+// same fact as everything shown.
 //
 // Numbering and order come from lib/court-order — the same comparator
 // Court Hub and the Case Vault filter use — so the serial numbers read
 // identically wherever an advocate looks.
 
-export const ALL_COURTS = "__all__";
-
-/** The grouping key shared with the by-court view. */
+/** The court key for a hearing row. */
 export function courtKeyOf(c: {
   courtName: string;
   courtPlace: string;
@@ -83,24 +87,39 @@ export function buildCourtOptions(
 export default function CourtFilter({
   options,
   selected,
-  onSelect,
+  onChange,
   total,
 }: {
   options: CourtOption[];
-  selected: string;
-  onSelect: (key: string) => void;
+  /** Court keys to show. Empty means every court. */
+  selected: string[];
+  onChange: (keys: string[]) => void;
   total: number;
 }) {
   const [open, setOpen] = useState(false);
 
-  const active = useMemo(
-    () => options.find((o) => o.key === selected),
+  // Selections survive a bucket change, so a court that has since emptied
+  // could linger in the set. Read the label off the options actually
+  // present rather than off the raw selection.
+  const chosen = useMemo(
+    () => options.filter((o) => selected.includes(o.key)),
     [options, selected]
   );
-  const isFiltered = selected !== ALL_COURTS && Boolean(active);
+  const isFiltered = chosen.length > 0;
+  const shownCount = isFiltered
+    ? chosen.reduce((sum, o) => sum + o.count, 0)
+    : total;
 
   // One court in the whole bucket — a filter would be decoration.
   if (options.length < 2) return null;
+
+  function toggle(key: string) {
+    onChange(
+      selected.includes(key)
+        ? selected.filter((k) => k !== key)
+        : [...selected, key]
+    );
+  }
 
   return (
     <>
@@ -132,7 +151,7 @@ export default function CourtFilter({
           }}
           numberOfLines={1}
         >
-          {isFiltered ? shortLabel(active!) : "All courts"}
+          {chipLabel(chosen)}
         </Text>
         <Feather
           name="chevron-down"
@@ -148,18 +167,18 @@ export default function CourtFilter({
         title="Filter by court"
       >
         <ScrollView
-          style={{ maxHeight: 420 }}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+          style={{ maxHeight: 400 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Tick as many as you need — the sheet stays open, because
+              picking three courts shouldn't mean opening this three
+              times. */}
           <Row
             label="All courts"
             sub={`${total} ${total === 1 ? "matter" : "matters"}`}
-            on={selected === ALL_COURTS}
-            onPress={() => {
-              onSelect(ALL_COURTS);
-              setOpen(false);
-            }}
+            on={!isFiltered}
+            onPress={() => onChange([])}
           />
           {options.map((o) => (
             <Row
@@ -171,21 +190,42 @@ export default function CourtFilter({
                   .filter(Boolean)
                   .join(" · ")
               }
-              on={selected === o.key}
-              onPress={() => {
-                onSelect(o.key);
-                setOpen(false);
-              }}
+              on={selected.includes(o.key)}
+              onPress={() => toggle(o.key)}
             />
           ))}
         </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+          <Pressable
+            onPress={() => setOpen(false)}
+            className="rounded-xl items-center justify-center active:opacity-90"
+            style={{ backgroundColor: "#0a1124", paddingVertical: 13 }}
+            accessibilityRole="button"
+            accessibilityLabel="Apply court filter"
+          >
+            <Text
+              className="text-[13.5px]"
+              style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
+            >
+              {isFiltered
+                ? `Show ${shownCount} ${shownCount === 1 ? "matter" : "matters"}`
+                : "Show every court"}
+            </Text>
+          </Pressable>
+        </View>
       </Sheet>
     </>
   );
 }
 
-function shortLabel(o: CourtOption): string {
-  return o.number ? `${o.number} · ${o.name}` : o.name;
+function chipLabel(chosen: CourtOption[]): string {
+  if (chosen.length === 0) return "All courts";
+  if (chosen.length === 1) {
+    const o = chosen[0];
+    return o.number ? `${o.number} · ${o.name}` : o.name;
+  }
+  return `${chosen.length} courts`;
 }
 
 function Row({
@@ -211,8 +251,8 @@ function Row({
         borderWidth: 1,
         borderColor: on ? "#0a1124" : "#e3d9c0",
       }}
-      accessibilityRole="radio"
-      accessibilityState={{ selected: on }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
     >
       <View
         className="items-center justify-center rounded-md"

@@ -40,7 +40,6 @@ import DisposalFields, {
 } from "../../components/cases/DisposalFields";
 import { useDeleteRequestFallback } from "../../components/useDeleteRequestFallback";
 import CourtFilter, {
-  ALL_COURTS,
   buildCourtOptions,
   courtKeyOf,
 } from "../../components/hearings/CourtFilter";
@@ -126,6 +125,39 @@ function disposalPayload(
   };
 }
 
+// Free-text narrowing over one loaded bucket. Every field a matter gets
+// remembered by goes into the haystack — number, file number, CNR, both
+// parties, the court, the stage, the client's numbers, and the two dates
+// as they're stored — because an advocate looking for a matter has
+// whichever one of those came to mind first, not a particular one.
+//
+// Words are ANDed in any order, so "murugan pdjk" finds that client in
+// that court without caring which was typed first. Deliberately local: the
+// bucket is already on the device, and reaching for the server would only
+// return matters that don't belong to the tab being read.
+function matchesQuery(c: PartnerHearingItem, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    c.caseNo,
+    c.fileNo,
+    c.cnr,
+    c.clientName,
+    c.oppositeParty,
+    c.courtName,
+    c.courtPlace,
+    c.status,
+    c.clientPhone,
+    c.clientWhatsapp,
+    c.nextHearingDate?.slice(0, 10),
+    c.lastHearingDate?.slice(0, 10),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return q.split(/\s+/).every((term) => hay.includes(term));
+}
+
 export default function Hearings() {
   const { isPartnerAdmin } = useAuth();
   const router = useRouter();
@@ -162,14 +194,16 @@ export default function Hearings() {
   const [exporting, setExporting] = useState(false);
   const [exportBucket, setExportBucket] =
     useState<HearingExportBucket>("today");
-  // Court-wise grouping (the cause-list reading order) + the compact
-  // update sheet for scheduled rows.
-  const [groupByCourt, setGroupByCourt] = useState(false);
   // Court roster — only for the serial numbers, so the filter reads the
   // same as Court Hub. Fetched once; the options themselves come from the
   // hearings actually loaded.
   const [courts, setCourts] = useState<PartnerCourt[]>([]);
-  const [courtKey, setCourtKey] = useState<string>(ALL_COURTS);
+  // Empty = every court. Several courts can be ticked at once.
+  const [courtKeys, setCourtKeys] = useState<string[]>([]);
+  // Free-text narrowing over the loaded bucket — case number, client,
+  // court, CNR, file number, status, phone. Whatever the advocate
+  // happens to remember about the matter.
+  const [query, setQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   // Rows whose hearing was saved in this session, keyed by case id. Applied
   // over the server list so a card keeps showing (and messaging) what was
@@ -191,32 +225,20 @@ export default function Hearings() {
     [allRows, courts]
   );
 
+  const courtFiltered = useMemo(() => {
+    if (courtKeys.length === 0) return allRows;
+    const wanted = new Set(courtKeys);
+    return allRows.filter((c) => wanted.has(courtKeyOf(c)));
+  }, [allRows, courtKeys]);
+
   const view = useMemo(
-    () =>
-      courtKey === ALL_COURTS
-        ? allRows
-        : allRows.filter((c) => courtKeyOf(c) === courtKey),
-    [allRows, courtKey]
+    () => courtFiltered.filter((c) => matchesQuery(c, query)),
+    [courtFiltered, query]
   );
   const updating = useMemo(
     () => view.find((c) => c.id === updatingId) ?? null,
     [view, updatingId]
   );
-
-  const courtGroups = useMemo(() => {
-    const map = new Map<string, PartnerHearingItem[]>();
-    for (const c of view) {
-      const key =
-        [c.courtName, c.courtPlace].filter(Boolean).join(", ") ||
-        "Court not set";
-      const arr = map.get(key) ?? [];
-      arr.push(c);
-      map.set(key, arr);
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([title, groupItems]) => ({ title, items: groupItems }));
-  }, [view]);
 
   const load = useCallback(
     async (b: HearingBucket) => {
@@ -241,7 +263,8 @@ export default function Hearings() {
     let alive = true;
     setLoading(true);
     setSavedPatches({});
-    setCourtKey(ALL_COURTS);
+    setCourtKeys([]);
+    setQuery("");
     (async () => {
       await load(bucket);
       if (alive) setLoading(false);
@@ -321,44 +344,14 @@ export default function Hearings() {
         <Segmented bucket={bucket} onChange={changeBucket} counts={counts} />
 
         {items.length > 0 && !loading ? (
-          <View className="px-5 pt-3 flex-row justify-end items-center gap-2">
+          <View className="px-5 pt-3 flex-row items-center gap-2">
+            <SearchBox value={query} onChange={setQuery} />
             <CourtFilter
               options={courtOptions}
-              selected={courtKey}
-              onSelect={setCourtKey}
+              selected={courtKeys}
+              onChange={setCourtKeys}
               total={allRows.length}
             />
-            {bucket !== "pending" ? (
-            <Pressable
-              onPress={() => setGroupByCourt((v) => !v)}
-              hitSlop={6}
-              className="flex-row items-center gap-1.5 rounded-full px-3 active:opacity-75"
-              style={{
-                paddingVertical: 5,
-                backgroundColor: groupByCourt ? "#0a1124" : "#ffffff",
-                borderWidth: 1,
-                borderColor: groupByCourt ? "#0a1124" : "#e3d9c0",
-              }}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: groupByCourt }}
-              accessibilityLabel="Group by court"
-            >
-              <Feather
-                name="layers"
-                size={12}
-                color={groupByCourt ? "#ddb074" : "#8a5821"}
-              />
-              <Text
-                className="text-[11px]"
-                style={{
-                  fontFamily: "Manrope-SemiBold",
-                  color: groupByCourt ? "#f5ebd6" : "#4d4538",
-                }}
-              >
-                By court
-              </Text>
-            </Pressable>
-            ) : null}
           </View>
         ) : null}
 
@@ -397,11 +390,18 @@ export default function Hearings() {
             ) : null}
 
             {view.length === 0 ? (
-              // "Nothing today" and "nothing in THIS court today" are
+              // "Nothing today" and "nothing that MATCHES today" are
               // different facts; saying the first when the second is true
               // would read as data loss.
-              courtKey !== ALL_COURTS && allRows.length > 0 ? (
-                <EmptyForCourt onClear={() => setCourtKey(ALL_COURTS)} />
+              allRows.length > 0 && (query.trim() || courtKeys.length > 0) ? (
+                <EmptyForFilters
+                  query={query.trim()}
+                  courtCount={courtKeys.length}
+                  onClear={() => {
+                    setQuery("");
+                    setCourtKeys([]);
+                  }}
+                />
               ) : (
                 <Empty bucket={bucket} />
               )
@@ -423,43 +423,6 @@ export default function Hearings() {
                       onSaved={(patch) => applyPatch(c.id, patch)}
                       onDone={() => finishWith(c.id)}
                     />
-                  </Animated.View>
-                ))}
-              </View>
-            ) : groupByCourt ? (
-              <View className="gap-5">
-                {courtGroups.map((group) => (
-                  <Animated.View
-                    key={group.title}
-                    entering={FadeInDown.duration(380)}
-                  >
-                    {/* Court-wise cause list — the order a clerk reads it */}
-                    <View className="flex-row items-center gap-2.5 mb-2.5">
-                      <View className="h-px flex-1 bg-app-edge" />
-                      <Text
-                        className="text-[10px] uppercase text-app-copper-deep"
-                        style={{
-                          fontFamily: "DMMono-Medium",
-                          letterSpacing: 1.6,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {group.title} · {group.items.length}
-                      </Text>
-                      <View className="h-px flex-1 bg-app-edge" />
-                    </View>
-                    <View className="gap-3">
-                      {group.items.map((c) => (
-                        <ScheduledRow
-                          key={c.id}
-                          c={c}
-                          officeName={officeName}
-                          template={template}
-                          saved={Boolean(savedPatches[c.id])}
-                          onUpdate={() => setUpdatingId(c.id)}
-                        />
-                      ))}
-                    </View>
                   </Animated.View>
                 ))}
               </View>
@@ -865,6 +828,52 @@ function TopBar({ onExport }: { onExport?: (() => void) | null }) {
           accessibilityLabel="Export cause list"
         >
           <Feather name="download" size={15} color="#8a5821" />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/* ─── Search ─── */
+
+function SearchBox({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View
+      className="flex-1 flex-row items-center gap-2 rounded-full bg-app-paper px-3"
+      style={{
+        paddingVertical: 4,
+        borderWidth: 1,
+        borderColor: value ? "#c5853a" : "#e3d9c0",
+      }}
+    >
+      <Feather name="search" size={13} color="#a89c80" />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Search this list"
+        placeholderTextColor="#a89c80"
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+        className="flex-1 text-[13px] text-app-ink"
+        style={{ fontFamily: "Manrope", paddingVertical: 0 }}
+        accessibilityLabel="Search hearings"
+      />
+      {value.length > 0 ? (
+        <Pressable
+          onPress={() => onChange("")}
+          hitSlop={8}
+          className="active:opacity-50"
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+        >
+          <Feather name="x" size={13} color="#8a5821" />
         </Pressable>
       ) : null}
     </View>
@@ -1607,26 +1616,49 @@ async function openWhatsApp(
 
 /* ─── Empty ─── */
 
-function EmptyForCourt({ onClear }: { onClear: () => void }) {
+function EmptyForFilters({
+  query,
+  courtCount,
+  onClear,
+}: {
+  query: string;
+  courtCount: number;
+  onClear: () => void;
+}) {
+  const searching = query.length > 0;
   return (
     <View className="items-center pt-12">
       <View
         className="h-12 w-12 items-center justify-center rounded-full"
         style={{ backgroundColor: "#efe5d0" }}
       >
-        <Feather name="home" size={20} color="#8a5821" />
+        <Feather name={searching ? "search" : "home"} size={20} color="#8a5821" />
       </View>
       <Text
         className="mt-4 text-[20px] font-semibold tracking-tight text-app-ink text-center"
         style={{ fontFamily: "Crimson-SemiBold" }}
       >
-        Nothing in this court.
+        {searching ? "No matches." : "Nothing in these courts."}
       </Text>
       <Text
-        className="mt-1.5 text-[12px] text-app-fg-muted text-center max-w-[280px]"
+        className="mt-1.5 text-[12px] text-app-fg-muted text-center max-w-[290px]"
         style={{ fontFamily: "Manrope" }}
       >
-        Other courts have matters listed — clear the filter to see them.
+        {searching ? (
+          <>
+            Nothing on this list answers to{" "}
+            <Text
+              style={{ fontFamily: "Manrope-SemiBold", color: "#0a1124" }}
+            >
+              “{query}”
+            </Text>
+            {courtCount > 0
+              ? ` in the ${courtCount === 1 ? "court" : `${courtCount} courts`} you picked.`
+              : "."}
+          </>
+        ) : (
+          "Other courts have matters listed — clear the filter to see them."
+        )}
       </Text>
       <Pressable
         onPress={onClear}
@@ -1638,7 +1670,7 @@ function EmptyForCourt({ onClear }: { onClear: () => void }) {
           className="text-[12px]"
           style={{ fontFamily: "Manrope-SemiBold", color: "#f5ebd6" }}
         >
-          Show all courts
+          Show the whole list
         </Text>
       </Pressable>
     </View>
