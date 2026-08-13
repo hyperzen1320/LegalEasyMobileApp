@@ -27,6 +27,7 @@ import { useAuth } from "../../../lib/auth-context";
 import ExportSheet from "../../../components/ExportSheet";
 import ConfirmSheet from "../../../components/ConfirmSheet";
 import CnrChip from "../../../components/CnrChip";
+import DisposalSummary from "../../../components/cases/DisposalSummary";
 import {
   CASE_EXPORT_COLUMNS,
   DISPOSED_EXPORT_DEFAULT_KEYS,
@@ -688,47 +689,10 @@ function DisposedRow({
         </Text>
       ) : null}
 
-      {c.caStatus || c.receivedByClient ? (
-        <View
-          className="mt-2 flex-row flex-wrap items-center"
-          style={{ gap: 8 }}
-        >
-          {c.caStatus ? (
-            <View
-              className="rounded px-2 py-1"
-              style={{ backgroundColor: "#efe5d0" }}
-            >
-              <Text
-                className="text-[9px] uppercase"
-                style={{
-                  fontFamily: "DMMono-Medium",
-                  letterSpacing: 1.2,
-                  color: "#8a5821",
-                }}
-              >
-                C.A. · {c.caStatus}
-              </Text>
-            </View>
-          ) : null}
-          {c.receivedByClient ? (
-            <View
-              className="rounded px-2 py-1"
-              style={{ backgroundColor: "#d2e6e7" }}
-            >
-              <Text
-                className="text-[9px] uppercase"
-                style={{
-                  fontFamily: "DMMono-Medium",
-                  letterSpacing: 1.2,
-                  color: "#3f9a8c",
-                }}
-              >
-                Received ✓
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+      <DisposalSummary
+        caStatus={c.caStatus || ""}
+        receivedByClient={Boolean(c.receivedByClient)}
+      />
 
       {onReopen || onDelete ? (
         <View className="mt-3 pt-3 border-t border-app-edge-soft flex-row items-center justify-between">
