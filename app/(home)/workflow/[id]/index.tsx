@@ -684,13 +684,10 @@ export default function BoardDetail() {
               gap: 12,
               alignItems: "flex-start",
             }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#c5853a"
-              />
-            }
+            // No RefreshControl here — see the note on the column below.
+            // A pull-to-refresh on a HORIZONTAL scroller swallows every
+            // downward drag on the board, including the ones meant for
+            // the list you're reading.
           >
             {renderLists.map((list) => (
               <ListColumn
@@ -698,6 +695,9 @@ export default function BoardDetail() {
                 list={list}
                 listWidth={listWidth}
                 viewportH={boardViewportH}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                anyDragging={anyDragging}
                 tasks={tasksByList.get(list.id) || []}
                 edges={
                   edgesByList.get(list.id) || {
@@ -1036,6 +1036,9 @@ function ListColumn({
   list,
   listWidth,
   viewportH,
+  refreshing,
+  onRefresh,
+  anyDragging,
   tasks,
   edges,
   listTitleById,
@@ -1052,6 +1055,10 @@ function ListColumn({
   listWidth: number;
   // Measured height of the board scroller, or null until it has laid out.
   viewportH: number | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  /** A card or a column is in hand somewhere on the board. */
+  anyDragging: boolean;
   tasks: PreviewTask[];
   edges: { incoming: CanvasEdge[]; outgoing: CanvasEdge[] };
   listTitleById: Map<string, string>;
@@ -1213,6 +1220,29 @@ function ListColumn({
         // column — otherwise the cards would slide under the finger that's
         // carrying the column.
         scrollEnabled={!dnd.isDragging && !isColumnDragging}
+        // Pull-to-refresh belongs HERE, on the vertical scroller, not on
+        // the horizontal board around it.
+        //
+        // On Android a RefreshControl wraps its scroller in a
+        // SwipeRefreshLayout, which starts refreshing whenever the child
+        // "can't scroll up". A horizontal ScrollView can never scroll up,
+        // so the board's refresh answered every downward drag anywhere on
+        // it — including inside a list already scrolled to the bottom.
+        // Reading to the end of a long list and swiping back up refreshed
+        // the board instead of scrolling, which is exactly what chambers
+        // reported. On a vertical scroller the same check means what it
+        // says: only a list already at its top starts a refresh.
+        //
+        // Disabled mid-drag so carrying a card downward past the top of a
+        // list can't turn into a pull.
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            enabled={!anyDragging}
+            tintColor="#c5853a"
+          />
+        }
         style={{ flexShrink: 1 }}
         contentContainerStyle={{
           paddingHorizontal: 8,
