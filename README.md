@@ -47,7 +47,7 @@ The mobile and web apps share the **same partner-side REST API** (`/api/app/*`) 
 - 📞 **Native `tel:` + WhatsApp deep-link** — tries `whatsapp://send?phone=…&text=…`, falls back to `wa.me/…` with the same pre-written professional reminder the web sends
 - 📅 **Custom date pickers** — three numeric inputs in a bottom sheet, no native deps, perfectly accessible
 - 🎚️ **Bottom-sheet selectors** for status / role / appearing-for — friendlier than wide pill rows on a phone
-- 🌈 **Trello-style boards** with `expo-linear-gradient` colour tiles (forest · copper · sea · terracotta · ochre · plum · ink)
+- 🌈 **Workflow boards** with `expo-linear-gradient` colour tiles (forest · copper · sea · terracotta · ochre · plum · ink · slate · olive · indigo)
 - 🔐 **5-role RBAC** mirrored from web: Admin · Advocate · Junior · Clerk · Viewer
 - 🪄 **AI Assistant** with `expo-clipboard` for one-tap prompt copy
 - 🔄 **Pull-to-refresh + focus-refresh** everywhere — your data is never stale

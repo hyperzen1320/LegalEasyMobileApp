@@ -30,11 +30,15 @@ function dueState(iso: string): "overdue" | "today" | "future" {
 }
 
 /**
- * One Trello card. Tap → push to detail. The "⋯" button opens the
+ * One card on a board. Tap → push to detail. The "⋯" button opens the
  * caller's action sheet (Move / Edit / Delete) — long-press is reserved
  * for drag & drop, with the sheet's Move flow as the accessible
  * fallback. Optimistic temp:* cards render dim with a small "saving"
  * dot so users know they aren't yet on the server.
+ *
+ * Type sizes are a step up from where they started: chambers read these
+ * across a desk, and a card title carries a case number, a party and a
+ * date, which is a lot to squeeze into 14px.
  */
 export default function CardItem({
   task,
@@ -111,7 +115,7 @@ export default function CardItem({
           />
         ) : null}
         <Text
-          className="flex-1 text-[14px] text-app-ink leading-snug"
+          className="flex-1 text-[15.5px] text-app-ink leading-snug"
           style={{
             fontFamily: "Manrope-SemiBold",
             letterSpacing: -0.1,
@@ -141,7 +145,7 @@ export default function CardItem({
       {/* description preview */}
       {task.hasDescription && task.description ? (
         <Text
-          className="mt-1.5 text-[12px] text-app-fg-muted leading-snug"
+          className="mt-1.5 text-[13px] text-app-fg-muted leading-snug"
           style={{ fontFamily: "Manrope" }}
           numberOfLines={2}
         >

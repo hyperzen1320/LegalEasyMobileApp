@@ -59,7 +59,7 @@ export default function More() {
     {
       label: "Work Flow",
       feature: "workflow",
-      description: "Trello-style boards for office processes",
+      description: "Boards for the office's own processes",
       icon: "layout",
       onPress: () => router.push("/(home)/workflow"),
     },

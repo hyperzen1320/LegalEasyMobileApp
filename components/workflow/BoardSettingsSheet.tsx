@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -20,15 +21,16 @@ import {
   type DeleteRequestRequiredError,
 } from "../../lib/api";
 
-// Board housekeeping — rename, recolour, delete. Deleting follows the
-// office smart-delete rule (admin direct, others via delete request);
-// the caller owns the RequestDeleteSheet and navigation.
+// Board housekeeping — rename, re-describe, recolour, delete. Deleting
+// follows the office smart-delete rule (admin direct, others via delete
+// request); the caller owns the RequestDeleteSheet and navigation.
 
 export default function BoardSettingsSheet({
   visible,
   onClose,
   boardId,
   title,
+  description,
   color,
   onSaved,
   onDeleted,
@@ -38,12 +40,18 @@ export default function BoardSettingsSheet({
   onClose: () => void;
   boardId: string;
   title: string;
+  description: string;
   color: BoardColor;
-  onSaved: (next: { title: string; color: BoardColor }) => void;
+  onSaved: (next: {
+    title: string;
+    description: string;
+    color: BoardColor;
+  }) => void;
   onDeleted: () => void;
   onDeleteNeedsRequest: (target: DeleteRequestRequiredError) => void;
 }) {
   const [draftTitle, setDraftTitle] = useState(title);
+  const [draftDescription, setDraftDescription] = useState(description);
   const [draftColor, setDraftColor] = useState<BoardColor>(color);
   const [busy, setBusy] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,11 +59,12 @@ export default function BoardSettingsSheet({
   useEffect(() => {
     if (visible) {
       setDraftTitle(title);
+      setDraftDescription(description);
       setDraftColor(color);
       setError(null);
       setBusy(null);
     }
-  }, [visible, title, color]);
+  }, [visible, title, description, color]);
 
   async function save() {
     if (busy) return;
@@ -64,11 +73,16 @@ export default function BoardSettingsSheet({
       setError("The board needs a name.");
       return;
     }
+    const d = draftDescription.trim();
     setBusy("save");
     setError(null);
     try {
-      await partnerUpdateBoard(boardId, { title: t, color: draftColor });
-      onSaved({ title: t, color: draftColor });
+      await partnerUpdateBoard(boardId, {
+        title: t,
+        description: d,
+        color: draftColor,
+      });
+      onSaved({ title: t, description: d, color: draftColor });
       onClose();
     } catch (err) {
       setError(
@@ -120,8 +134,13 @@ export default function BoardSettingsSheet({
       eyebrow="Workflow"
       title="Board settings"
       showClose={!busy}
+      containerStyle={{ maxHeight: "90%" }}
     >
-      <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12 }}
+      >
         {error ? (
           <View
             className="rounded-md px-3.5 py-2.5 mb-3"
@@ -154,6 +173,32 @@ export default function BoardSettingsSheet({
             borderColor: "#e3d9c0",
           }}
           maxLength={80}
+        />
+
+        {/* The description was set once, when the board was created, and
+            never again — so a board whose purpose had moved on carried the
+            wrong subtitle on every tile for good. */}
+        <Text
+          className="text-[10px] uppercase text-app-copper-deep mt-5 mb-2"
+          style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+        >
+          Description
+        </Text>
+        <TextInput
+          value={draftDescription}
+          onChangeText={setDraftDescription}
+          placeholder="What kind of work goes here?"
+          placeholderTextColor="#a89c80"
+          multiline
+          className="rounded-xl bg-app-paper px-3.5 py-3 text-[14px] text-app-ink"
+          style={{
+            fontFamily: "Manrope",
+            minHeight: 64,
+            textAlignVertical: "top",
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+          }}
+          maxLength={200}
         />
 
         <Text
@@ -258,7 +303,7 @@ export default function BoardSettingsSheet({
           </Text>
         </Pressable>
         <View style={{ height: 16 }} />
-      </View>
+      </ScrollView>
     </Sheet>
   );
 }
