@@ -12,7 +12,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import {
   partnerListUsers,
@@ -64,6 +69,14 @@ export default function UserDetail() {
       setLoading(false);
     })();
   }, [load]);
+
+  // Returning here after an edit lands on this screen without remounting
+  // it, so re-read the record rather than showing what it used to say.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   return (
     <View className="flex-1 bg-app-canvas">
@@ -117,7 +130,7 @@ export default function UserDetail() {
                   user={user}
                   meId={meId}
                   onUpdated={(u) => setUser(u)}
-                  onRemoved={() => router.replace("/(home)/users")}
+                  onRemoved={() => backToList("/(home)/users")}
                 />
               ) : !isAdmin ? (
                 <View

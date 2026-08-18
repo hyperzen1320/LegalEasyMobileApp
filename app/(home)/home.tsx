@@ -25,6 +25,7 @@ import { useNotificationCount } from "../../lib/notification-count";
 import { LiveOverview } from "../../components/LiveOverview";
 import BellSheet from "../../components/BellSheet";
 import { caseHref } from "../../components/cases/useCaseOrigin";
+import { openSection } from "../../lib/navigation";
 
 export default function PartnerHome() {
   const { user, partner, isPartnerAdmin } = useAuth();
@@ -213,7 +214,7 @@ function TopBar({
         {/* Profile, off the tab bar and onto the corner it belongs in —
             the advocate's own initials, next to the bell. */}
         <Pressable
-          onPress={() => router.push("/(home)/profile")}
+          onPress={() => openSection("/(home)/profile")}
           className="h-10 w-10 items-center justify-center rounded-full active:opacity-70"
           style={{ backgroundColor: "#0a1124" }}
           accessibilityRole="button"
@@ -466,7 +467,7 @@ function StatsGrid({
           // on any phone width (4-up never wraps oddly on tablets).
           style={{ flexGrow: 1, flexBasis: "44%" }}
         >
-          <StatCard {...it} onPress={() => router.push(it.href as never)} />
+          <StatCard {...it} onPress={() => openSection(it.href as never)} />
         </Animated.View>
       ))}
     </View>
@@ -600,7 +601,7 @@ function TodaysBoard({
           Today&rsquo;s Board
         </Text>
         <Pressable
-          onPress={() => router.push("/(home)/hearings?bucket=today")}
+          onPress={() => openSection("/(home)/hearings?bucket=today")}
           hitSlop={6}
           className="active:opacity-50"
         >

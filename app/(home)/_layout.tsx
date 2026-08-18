@@ -61,6 +61,23 @@ export default function HomeLayout() {
       backBehavior="history"
       screenOptions={{
         headerShown: false,
+        // Every tab opens at its own root.
+        //
+        // Several tabs are stacks that OTHER tabs push into: the Hearing
+        // Track and Today's Board open a case dossier inside the Cases
+        // stack, More opens the disposed archive there, the bell opens a
+        // board inside Work Flow. Nothing ever unwound those, so the
+        // depth accumulated: a dossier opened from the diary on Monday
+        // was still sitting under the Case Vault on Tuesday, and tapping
+        // Case Vault pushed a second copy of the list on top of it —
+        // which is why backing out of a case landed on some unrelated
+        // matter before reaching the dashboard.
+        //
+        // popToTopOnBlur unwinds a tab's stack the moment you leave it,
+        // so a tab can only ever hold depth you created while you were
+        // standing in it. One flag, and the whole class of stale-screen
+        // bugs stops being possible.
+        popToTopOnBlur: true,
         // Cross-fade + drift between tabs instead of a hard card swap.
         animation: "shift",
         tabBarActiveTintColor: "#c5853a",

@@ -3,6 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import { openSection } from "../../lib/navigation";
 import { useAuth } from "../../lib/auth-context";
 import { useChatUnread } from "../../lib/chat-unread";
 import { useNotificationCount } from "../../lib/notification-count";
@@ -40,49 +41,49 @@ export default function More() {
       description: "Office chat, private notes & reminders",
       icon: "message-square",
       badge: unread.totalUnread,
-      onPress: () => router.push("/(home)/senior-desk"),
+      onPress: () => openSection("/(home)/senior-desk"),
     },
     {
       label: "Client Crew",
       feature: "clients",
       description: "Clients & linked matters",
       icon: "users",
-      onPress: () => router.push("/(home)/clients"),
+      onPress: () => openSection("/(home)/clients"),
     },
     {
       label: "Court Hub",
       feature: "courts",
       description: "Master list of courts",
       icon: "home",
-      onPress: () => router.push("/(home)/courts"),
+      onPress: () => openSection("/(home)/courts"),
     },
     {
       label: "Work Flow",
       feature: "workflow",
       description: "Boards for the office's own processes",
       icon: "layout",
-      onPress: () => router.push("/(home)/workflow"),
+      onPress: () => openSection("/(home)/workflow"),
     },
     {
       label: "AI Assistant",
       feature: "ai",
       description: "Drafts, plaints, prompts",
       icon: "zap",
-      onPress: () => router.push("/(home)/ai"),
+      onPress: () => openSection("/(home)/ai"),
     },
     {
       label: "Disposed Cases",
       feature: "disposed",
       description: "Closed matters archive",
       icon: "archive",
-      onPress: () => router.push("/(home)/cases/disposed"),
+      onPress: () => openSection("/(home)/cases/disposed"),
     },
     {
       label: "Users / Advocates",
       feature: "users",
       description: "Office team & roles",
       icon: "user-plus",
-      onPress: () => router.push("/(home)/users"),
+      onPress: () => openSection("/(home)/users"),
     },
     {
       label: "Our website",
@@ -98,27 +99,27 @@ export default function More() {
       feature: "attendance",
             description: "The office register, day by day",
             icon: "check-square",
-            onPress: () => router.push("/(home)/attendance"),
+            onPress: () => openSection("/(home)/attendance"),
           },
           {
             label: "Delete Requests",
             description: "Approve or reject what the office asked to remove",
             icon: "trash-2",
             badge: pendingDeletes,
-            onPress: () => router.push("/(home)/delete-requests"),
+            onPress: () => openSection("/(home)/delete-requests"),
           },
           {
             label: "Office Activity",
             feature: "activity",
             description: "Audit log of everything that happened",
             icon: "activity",
-            onPress: () => router.push("/(home)/activity"),
+            onPress: () => openSection("/(home)/activity"),
           },
           {
             label: "Office Settings",
             description: "Activity retention & housekeeping",
             icon: "settings",
-            onPress: () => router.push("/(home)/settings"),
+            onPress: () => openSection("/(home)/settings"),
           },
         ] as MoreItem[])
       : []),
@@ -126,7 +127,7 @@ export default function More() {
       label: "Tools",
       description: "Handy tools for your practice",
       icon: "tool",
-      onPress: () => router.push("/(home)/tools"),
+      onPress: () => openSection("/(home)/tools"),
     },
   ];
 
@@ -142,13 +143,13 @@ export default function More() {
       label: "My Profile",
       description: "Identity & signature",
       icon: "user",
-      onPress: () => router.push("/(home)/profile"),
+      onPress: () => openSection("/(home)/profile"),
     },
     {
       label: "Support",
       description: "Tutorials & report an issue",
       icon: "life-buoy",
-      onPress: () => router.push("/(home)/support"),
+      onPress: () => openSection("/(home)/support"),
     },
     {
       label: "Sign out",

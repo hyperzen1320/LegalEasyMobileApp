@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { openSection } from "../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
@@ -307,7 +308,7 @@ function QuickActions() {
           <Feather name="arrow-right" size={16} color="white" />
         </Pressable>
         <Pressable
-          onPress={() => router.push("/(admin)/partners")}
+          onPress={() => openSection("/(admin)/partners")}
           className="bg-admin-surface border border-admin-border active:bg-admin-bg rounded-md px-5 py-3.5 flex-row items-center justify-between"
         >
           <Text className="font-plex-medium text-[14px] text-admin-fg">
@@ -337,7 +338,7 @@ function RecentPartners({
           Recent Partners
         </Text>
         <Pressable
-          onPress={() => router.push("/(admin)/partners")}
+          onPress={() => openSection("/(admin)/partners")}
           hitSlop={6}
           className="active:opacity-50"
         >

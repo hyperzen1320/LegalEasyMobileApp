@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import { partnerCreatePrompt, ApiError } from "../../../lib/api";
 
@@ -35,7 +36,7 @@ export default function NewPrompt() {
     setSaving(true);
     try {
       await partnerCreatePrompt({ title, body, category });
-      router.replace("/(home)/ai");
+      backToList("/(home)/ai");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save");
       setSaving(false);

@@ -9,7 +9,7 @@ import {
   Linking,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
@@ -71,6 +71,16 @@ export default function CaseDetailView({
       alive = false;
     };
   }, [load]);
+
+  // Popping back from the editor lands on this screen without
+  // remounting it, so without this the dossier would still show the
+  // values you had just changed. Silent — the pull-to-refresh spinner is
+  // for a refresh you asked for.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

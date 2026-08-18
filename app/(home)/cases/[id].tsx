@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import CaseDetailView from "../../../components/cases/CaseDetailView";
 import { useCaseOrigin } from "../../../components/cases/useCaseOrigin";
+import { backToList } from "../../../lib/navigation";
 
 // Phone route for one matter — a thin chrome shell around
 // CaseDetailView (which the tablet two-pane embeds directly). Keeping
@@ -43,7 +44,9 @@ export default function CaseDetail() {
         </View>
         <CaseDetailView
           caseId={String(id)}
-          onDeleted={() => router.replace("/(home)/cases")}
+          // Unwind to the vault rather than swapping this screen for a
+          // second copy of it — `replace` left the old list underneath.
+          onDeleted={() => backToList("/(home)/cases")}
         />
       </SafeAreaView>
     </View>
