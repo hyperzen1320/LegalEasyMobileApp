@@ -5,12 +5,19 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Sheet from "../Sheet";
-import { DateField } from "../CaseFields";
+// The disposal form itself lives in DisposalFields, which Hearing Track
+// also renders inline. This panel used to keep a second, hand-copied
+// version of the same four fields — which is how the two ended up
+// offering different C.A. options. One component now, one behaviour.
+import DisposalFields, {
+  EMPTY_DISPOSAL,
+  todayLocal,
+  type DisposalRecord,
+} from "./DisposalFields";
 import { useAuth } from "../../lib/auth-context";
 import {
   ApiError,
@@ -26,12 +33,6 @@ import {
 // whether the client has the copy — in one sheet, and an admin can edit
 // that record later without reopening the matter.
 
-const CA_OPTIONS = ["Applied", "Ready", "Delivered"];
-
-function todayLocal(): string {
-  // en-CA formats as YYYY-MM-DD in local time (no UTC day-drift in IST).
-  return new Date().toLocaleDateString("en-CA");
-}
 
 function fmtStamp(iso: string | null): string {
   if (!iso) return "";
@@ -51,10 +52,7 @@ export default function DisposePanel({
 }) {
   const { isPartnerAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [disposalDate, setDisposalDate] = useState("");
-  const [caStatus, setCaStatus] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [receivedByClient, setReceivedByClient] = useState(false);
+  const [record, setRecord] = useState<DisposalRecord>(EMPTY_DISPOSAL);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,13 +62,14 @@ export default function DisposePanel({
   // disposal) and open it. Used for both "close the matter" and, when
   // already disposed, "edit disposal details".
   function openSheet() {
-    setDisposalDate(
-      (c.disposalDate || c.disposedAt || "").slice(0, 10) ||
-        (disposed ? "" : todayLocal())
-    );
-    setCaStatus(c.caStatus || "");
-    setRemarks(c.disposalRemarks || "");
-    setReceivedByClient(Boolean(c.receivedByClient));
+    setRecord({
+      disposalDate:
+        (c.disposalDate || c.disposedAt || "").slice(0, 10) ||
+        (disposed ? "" : todayLocal()),
+      caStatus: c.caStatus || "",
+      disposalRemarks: c.disposalRemarks || "",
+      receivedByClient: Boolean(c.receivedByClient),
+    });
     setError(null);
     setSheetOpen(true);
   }
@@ -85,10 +84,10 @@ export default function DisposePanel({
       // one call handles both the first disposal and later edits.
       const res = await partnerUpdateCase(c.id, {
         status: "Disposed",
-        disposalDate: disposalDate || null,
-        caStatus: caStatus.trim(),
-        disposalRemarks: remarks.trim(),
-        receivedByClient,
+        disposalDate: record.disposalDate || null,
+        caStatus: record.caStatus.trim(),
+        disposalRemarks: record.disposalRemarks.trim(),
+        receivedByClient: record.receivedByClient,
       });
       setSheetOpen(false);
       onChanged(res.case);
@@ -313,110 +312,7 @@ export default function DisposePanel({
             </View>
           ) : null}
 
-          <DateField
-            label="Disposed date"
-            value={disposalDate}
-            onChange={setDisposalDate}
-          />
-
-          <Text
-            className="text-[10px] uppercase text-app-copper-deep mt-4 mb-2"
-            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
-          >
-            C.A. status
-          </Text>
-          <View className="flex-row flex-wrap mb-2" style={{ gap: 8 }}>
-            {CA_OPTIONS.map((opt) => {
-              const on = caStatus.trim().toLowerCase() === opt.toLowerCase();
-              return (
-                <Pressable
-                  key={opt}
-                  onPress={() => setCaStatus(on ? "" : opt)}
-                  className="rounded-full px-3 py-1.5 active:opacity-70"
-                  style={{
-                    backgroundColor: on ? "#0a1124" : "#ffffff",
-                    borderWidth: 1,
-                    borderColor: on ? "#0a1124" : "#e3d9c0",
-                  }}
-                >
-                  <Text
-                    className="text-[12px]"
-                    style={{
-                      fontFamily: on ? "Manrope-SemiBold" : "Manrope",
-                      color: on ? "#f5ebd6" : "#0a1124",
-                    }}
-                  >
-                    {opt}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <TextInput
-            value={caStatus}
-            onChangeText={setCaStatus}
-            placeholder="Applied / Ready / Delivered"
-            placeholderTextColor="#a89c80"
-            className="rounded-xl bg-app-paper px-3.5 py-3 text-[14px] text-app-ink"
-            style={{
-              fontFamily: "Manrope",
-              borderWidth: 1,
-              borderColor: "#e3d9c0",
-            }}
-          />
-
-          <Text
-            className="text-[10px] uppercase text-app-copper-deep mt-4 mb-2"
-            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
-          >
-            Disposal note (optional)
-          </Text>
-          <TextInput
-            value={remarks}
-            onChangeText={setRemarks}
-            placeholder="Decree passed / settled / withdrawn — how did it end?"
-            placeholderTextColor="#a89c80"
-            multiline
-            numberOfLines={3}
-            className="rounded-xl bg-app-paper px-3.5 py-3 text-[14px] text-app-ink"
-            style={{
-              fontFamily: "Manrope",
-              minHeight: 84,
-              textAlignVertical: "top",
-              borderWidth: 1,
-              borderColor: "#e3d9c0",
-            }}
-          />
-
-          <Pressable
-            onPress={() => setReceivedByClient((v) => !v)}
-            className="mt-4 flex-row items-center gap-2.5 active:opacity-70"
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: receivedByClient }}
-          >
-            <View
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 6,
-                borderWidth: 1.5,
-                borderColor: receivedByClient ? "#c5853a" : "#c9bfa6",
-                backgroundColor: receivedByClient ? "#c5853a" : "transparent",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {receivedByClient ? (
-                <Feather name="check" size={14} color="#2a1c08" />
-              ) : null}
-            </View>
-            <Text
-              className="text-[14px] text-app-ink"
-              style={{ fontFamily: "Manrope-Medium" }}
-            >
-              Received by client
-            </Text>
-          </Pressable>
+          <DisposalFields value={record} onChange={setRecord} />
 
           <Pressable
             onPress={save}
