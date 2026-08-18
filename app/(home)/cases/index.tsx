@@ -146,6 +146,35 @@ export default function CaseVault() {
     }, [load])
   );
 
+  // Leaving the vault clears what you were looking for.
+  //
+  // Chambers asked for this: search "raj", open a matter, come back, and
+  // the box still held "raj" — so the roll looked three matters long and
+  // it took a moment to spot the ✕ that explained why. A filter set
+  // before a detour is a filter you've stopped thinking about. Refetching
+  // on focus, above, is a different concern: that one is freshness, this
+  // one is starting clean.
+  //
+  // Deliberately its own effect with stable deps. Folding it into the
+  // cleanup of the refetch above would re-run — and so wipe the box — on
+  // every keystroke, because that callback changes with `load`.
+  //
+  // Each setter no-ops when there's nothing to clear, so the common case
+  // (leaving an unfiltered vault) doesn't change state and doesn't spend
+  // a request re-fetching a list that never narrowed.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setQuery((prev) => (prev ? "" : prev));
+        setSearch((prev) => (prev ? "" : prev));
+        setFilters((prev) => (Object.keys(prev).length ? {} : prev));
+        setFilterLabels((prev) => (Object.keys(prev).length ? {} : prev));
+        setSelectionMode((prev) => (prev ? false : prev));
+      },
+      []
+    )
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load("reset");
