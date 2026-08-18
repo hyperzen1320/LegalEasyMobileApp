@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import { adminCreatePartner, ApiError } from "../../../lib/api";
 
@@ -88,7 +89,7 @@ export default function NewPartner() {
         trialDays: plan === "trial" ? Number(trialDays) || 14 : 0,
         password,
       });
-      router.replace("/(admin)/partners");
+      backToList("/(admin)/partners");
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Couldn't create.";
       setError(msg);

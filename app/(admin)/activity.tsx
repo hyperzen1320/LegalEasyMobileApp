@@ -9,7 +9,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
+import { openSection } from "../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { adminListActivity, type AdminActivity } from "../../lib/api";
@@ -219,7 +220,6 @@ function Row({
   activity: AdminActivity;
   delay: number;
 }) {
-  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const colors = actionColor(a.action);
   const created = new Date(a.createdAt);
@@ -271,7 +271,10 @@ function Row({
             if (hasDiffs) {
               setExpanded((s) => !s);
             } else if (targetLink) {
-              router.push(targetLink as never);
+              // The ledger links out to whatever a row is about — always
+              // somewhere else in the shell, never deeper into this
+              // screen's own stack.
+              openSection(targetLink as never);
             }
           }}
           className="p-4 active:bg-admin-bg"

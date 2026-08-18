@@ -66,11 +66,12 @@ export function useCaseOrigin(): { label: string; goBack: () => void } {
       router.back();
       return;
     }
-    // Leave the Cases stack as we found it — showing the vault, not this
-    // dossier — then hop to the tab that sent us here. `replace` rather
-    // than `navigate` so the Cases tab doesn't linger in the tab history
-    // as somewhere the advocate meant to be.
-    if (router.canDismiss()) router.dismissAll();
+    // Hop to the tab that sent us here. Unwinding the Cases stack is the
+    // navigator's job — popToTopOnBlur in (home)/_layout does it the
+    // moment this tab loses focus, for every tab, so there is no second
+    // dispatch to get out of order with this one. `replace` rather than
+    // `navigate` so the Cases tab doesn't linger in the tab history as
+    // somewhere the advocate meant to be.
     router.replace(origin.href as never);
   }, [origin, router]);
 

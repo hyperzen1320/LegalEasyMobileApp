@@ -11,7 +11,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
@@ -79,6 +83,14 @@ export default function ClientDetail() {
       setLoading(false);
     })();
   }, [load]);
+
+  // Returning here after an edit lands on this screen without remounting
+  // it, so re-read the record rather than showing what it used to say.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   async function save() {
     if (!client || busy) return;

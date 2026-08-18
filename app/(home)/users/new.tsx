@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import { partnerCreateUser, ApiError } from "../../../lib/api";
 import { Field, SheetField } from "../../../components/CaseFields";
@@ -71,7 +72,7 @@ export default function NewUser() {
         designation,
         phone,
       });
-      router.replace("/(home)/users");
+      backToList("/(home)/users");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save");
       setSubmitting(false);

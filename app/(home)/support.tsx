@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { openSection } from "../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { ApiError, partnerCreateSupportTicket } from "../../lib/api";
@@ -143,7 +144,7 @@ export default function Support() {
           >
             {/* Video tutorials — media library curated by the Legalezi team */}
             <Pressable
-              onPress={() => router.push("/(home)/tutorials")}
+              onPress={() => openSection("/(home)/tutorials")}
               className="rounded-2xl p-4 flex-row items-center gap-3 active:opacity-90"
               style={{
                 backgroundColor: "#0a1124",

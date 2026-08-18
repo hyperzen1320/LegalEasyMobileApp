@@ -11,7 +11,6 @@ import {
   StyleSheet,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Sheet from "./Sheet";
 import {
@@ -24,6 +23,7 @@ import {
   type ActivityHistoryRow,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { openSection } from "../lib/navigation";
 import { useNotificationCount } from "../lib/notification-count";
 
 // Bell-icon sheet. Replaces the web's BellDropdown for mobile.
@@ -58,7 +58,6 @@ type Tab = "requests" | "activity";
 
 export default function BellSheet({ visible, onClose }: Props) {
   const { isPartnerAdmin } = useAuth();
-  const router = useRouter();
   const { refresh: refreshBadge } = useNotificationCount();
 
   const [tab, setTab] = useState<Tab>("requests");
@@ -318,11 +317,11 @@ export default function BellSheet({ visible, onClose }: Props) {
             onLoadMore={loadMoreActivity}
             onOpenBoard={(boardId) => {
               onClose();
-              router.push(`/(home)/workflow/${boardId}` as never);
+              openSection(`/(home)/workflow/${boardId}` as never);
             }}
             onOpenLedger={() => {
               onClose();
-              router.push("/(home)/activity" as never);
+              openSection("/(home)/activity" as never);
             }}
           />
         )}

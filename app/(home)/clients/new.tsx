@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import {
   partnerCreateClient,
@@ -49,7 +50,9 @@ export default function NewClient() {
         address,
       };
       await partnerCreateClient(payload);
-      router.replace("/(home)/clients");
+      // Pop back to the roll rather than swapping this form for a
+      // second copy of it on top of the first.
+      backToList("/(home)/clients");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save");
       setSubmitting(false);

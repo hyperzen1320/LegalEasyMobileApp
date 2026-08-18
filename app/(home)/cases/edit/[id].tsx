@@ -13,6 +13,7 @@ import {
 import CaseForm, {
   type CaseFormInitial,
 } from "../../../../components/cases/CaseForm";
+import { backToList } from "../../../../lib/navigation";
 
 export default function EditCase() {
   const router = useRouter();
@@ -72,9 +73,16 @@ export default function EditCase() {
       const res = await partnerUpdateCase(caseId, payload);
       // Web parity: moving a matter to "Disposed" sends it to the archive.
       if (res.case.status === "Disposed") {
-        router.replace("/(home)/cases/disposed" as never);
+        // Unwind the dossier too — a matter that has just been archived
+        // isn't a screen to land back on.
+        router.dismissAll();
+        router.push("/(home)/cases/disposed" as never);
       } else {
-        router.replace(`/(home)/cases/${caseId}` as never);
+        // Back down to the dossier that opened this editor. `replace`
+        // swapped the editor for a SECOND dossier and left the first one
+        // underneath, so backing out of a matter you had just edited
+        // walked through the same matter twice.
+        backToList(`/(home)/cases/${caseId}` as never);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save");

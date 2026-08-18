@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { backToList } from "../../../lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import {
   adminGetPartner,
@@ -190,7 +191,7 @@ export default function PartnerDetail() {
             setActioning("delete");
             try {
               await adminDeletePartner(id);
-              router.replace("/(admin)/partners");
+              backToList("/(admin)/partners");
             } catch (err) {
               setError(err instanceof ApiError ? err.message : "Couldn't delete");
               setActioning(null);

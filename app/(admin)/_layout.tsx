@@ -29,7 +29,13 @@ export default function AdminLayout() {
 
   return (
     <Tabs
+      // Back walks the tabs actually visited, and every tab opens at its
+      // own root — the same two rules the partner shell follows. Without
+      // the second one the Partners stack kept whichever partner was last
+      // opened from the dashboard, and going back walked through it.
+      backBehavior="history"
       screenOptions={{
+        popToTopOnBlur: true,
         headerShown: false,
         animation: "shift",
         tabBarActiveTintColor: "#0e7c4a",
