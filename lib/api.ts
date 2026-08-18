@@ -594,6 +594,26 @@ export async function partnerDashboard(): Promise<PartnerDashboardData> {
 
 /** Server-side Case Vault filters — same param names as the web toolbar
  *  and the export endpoint (case-filter.ts). */
+// How the vault is ordered. Mirrors CaseSort in the API's lib/case-sort.
+// "recent" is the server default — the matter filed last, from either
+// app, is the first row.
+export type CaseSort = "recent" | "hearing" | "caseNo";
+
+export const CASE_SORT_OPTIONS: { key: CaseSort; label: string; hint: string }[] =
+  [
+    {
+      key: "recent",
+      label: "Recently added",
+      hint: "Newest matter first — including one just filed on the web.",
+    },
+    {
+      key: "hearing",
+      label: "Next hearing",
+      hint: "Soonest date first, undated matters leading.",
+    },
+    { key: "caseNo", label: "Case number", hint: "Plain alphabetical." },
+  ];
+
 export type CaseListFilters = {
   courtId?: string;
   courtPlace?: string;
@@ -601,6 +621,7 @@ export type CaseListFilters = {
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   search?: string;
+  sort?: CaseSort;
 };
 
 export async function partnerListCases(opts?: {

@@ -16,6 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { FlashList } from "@shopify/flash-list";
 import {
+  CASE_SORT_OPTIONS,
   partnerListCases,
   partnerDeleteCase,
   partnerBulkDeleteCases,
@@ -43,6 +44,8 @@ import {
 import { useDeleteRequestFallback } from "../../../components/useDeleteRequestFallback";
 
 const PAGE_SIZE = 50;
+// The server's own cap on one request (MAX_LIMIT in api/app/cases).
+const MAX_LIMIT = 500;
 
 export default function CaseVault() {
   const { offerDeleteRequest, deleteRequestSheet } =
@@ -101,17 +104,29 @@ export default function CaseVault() {
   );
 
   const load = useCallback(
-    async (mode: "reset" | "more") => {
+    async (mode: "reset" | "more" | "refresh") => {
       const myReq = ++reqIdRef.current;
+      // "refresh" re-reads everything already on screen as one page.
+      // Coming back from a matter used to call "reset", which collapsed
+      // three hundred scrolled-through rows back to the first fifty —
+      // so hunting for a case meant scrolling the same ground again
+      // after every tap. Capped at the server's own ceiling.
+      const depth = Math.min(pageRef.current * PAGE_SIZE, MAX_LIMIT);
       const page = mode === "more" ? pageRef.current + 1 : 1;
+      const limit = mode === "refresh" ? depth : PAGE_SIZE;
       try {
         const data = await partnerListCases({
           filters: params,
           page,
-          limit: PAGE_SIZE,
+          limit,
         });
         if (myReq !== reqIdRef.current) return; // params changed mid-flight
-        pageRef.current = data.page;
+        // A refresh spans several pages in one request, so the cursor is
+        // where those pages end, not the page number the server echoed.
+        pageRef.current =
+          mode === "refresh"
+            ? Math.max(1, Math.ceil(data.cases.length / PAGE_SIZE))
+            : data.page;
         setTotal(data.total);
         setHasMore(data.hasMore);
         setCases((prev) =>
@@ -142,7 +157,7 @@ export default function CaseVault() {
   // updated from a detail screen).
   useFocusEffect(
     useCallback(() => {
-      load("reset");
+      load("refresh");
     }, [load])
   );
 
@@ -167,7 +182,13 @@ export default function CaseVault() {
       () => () => {
         setQuery((prev) => (prev ? "" : prev));
         setSearch((prev) => (prev ? "" : prev));
-        setFilters((prev) => (Object.keys(prev).length ? {} : prev));
+        // Order survives: it's a preference, not something you set for
+        // one lookup and forget.
+        setFilters((prev) =>
+          Object.keys(prev).some((k) => k !== "sort")
+            ? (prev.sort ? { sort: prev.sort } : {})
+            : prev
+        );
         setFilterLabels((prev) => (Object.keys(prev).length ? {} : prev));
         setSelectionMode((prev) => (prev ? false : prev));
       },
@@ -177,7 +198,7 @@ export default function CaseVault() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load("reset");
+    await load("refresh");
     setRefreshing(false);
   }, [load]);
 
@@ -201,6 +222,16 @@ export default function CaseVault() {
   // Date-range chip collapses both bounds into one label.
   const filterChips = useMemo(() => {
     const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (filters.sort && filters.sort !== "recent") {
+      const label =
+        CASE_SORT_OPTIONS.find((o) => o.key === filters.sort)?.label ??
+        "Order";
+      chips.push({
+        key: "sort",
+        label,
+        clear: () => clearFilter("sort"),
+      });
+    }
     if (filters.courtPlace) {
       chips.push({
         key: "courtPlace",
@@ -313,7 +344,7 @@ export default function CaseVault() {
             : { ids: [...selectedIds] }
         );
         exitSelection();
-        await load("reset");
+        await load("refresh");
       }
       setConfirm(null);
     } catch (err) {

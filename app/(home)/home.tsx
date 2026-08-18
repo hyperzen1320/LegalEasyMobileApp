@@ -389,7 +389,8 @@ function StatsGrid({
   const { features } = useAuth();
   const items: Array<{
     label: string;
-    value: number;
+    // Omitted for a tile whose number isn't a piece of work to do.
+    value?: number;
     variant: "copper" | "ink" | "paper";
     icon: keyof typeof Feather.glyphMap;
     href: string;
@@ -436,9 +437,13 @@ function StatsGrid({
       href: "/(home)/hearings?bucket=pending",
     },
     {
+      // No count. Every other tile is a number you act on today —
+      // hearings to attend, dates to fix, cards to move. "How many
+      // matters has this office ever opened" isn't work, and chambers
+      // asked for it gone; the vault's own header still carries the
+      // total for anyone who wants it.
       label: "Case Vault",
       feature: "cases",
-      value: stats?.caseVault ?? 0,
       variant: "paper",
       icon: "briefcase",
       href: "/(home)/cases",
@@ -476,7 +481,8 @@ function StatCard({
   onPress,
 }: {
   label: string;
-  value: number;
+  /** Absent = a tile that's a doorway, not a count. */
+  value?: number;
   variant: "copper" | "ink" | "paper";
   icon: keyof typeof Feather.glyphMap;
   onPress: () => void;
@@ -505,11 +511,16 @@ function StatCard({
     },
   }[variant];
 
+  const hasValue = typeof value === "number";
+
   return (
     <Pressable
       onPress={onPress}
       className="rounded-xl p-5 active:opacity-90"
       style={{
+        // Fixed floor so a tile without a number sits level with the
+        // ones that have one.
+        minHeight: 132,
         backgroundColor: styles.bg,
         shadowColor: "#0a1124",
         shadowOpacity: variant === "paper" ? 0.04 : 0.18,
@@ -524,22 +535,50 @@ function StatCard({
       >
         <Feather name={icon} size={14} color={styles.iconColor} />
       </View>
-      <Text
-        className="mt-4 text-[36px] leading-none tracking-tight tabular-nums"
-        style={{ fontFamily: "Crimson-SemiBold", color: styles.text }}
-      >
-        {value}
-      </Text>
-      <Text
-        className="mt-2 text-[10px] uppercase"
-        style={{
-          fontFamily: "DMMono-Medium",
-          letterSpacing: 1.6,
-          color: styles.label,
-        }}
-      >
-        {label}
-      </Text>
+      {hasValue ? (
+        <>
+          <Text
+            className="mt-4 text-[36px] leading-none tracking-tight tabular-nums"
+            style={{ fontFamily: "Crimson-SemiBold", color: styles.text }}
+          >
+            {value}
+          </Text>
+          <Text
+            className="mt-2 text-[10px] uppercase"
+            style={{
+              fontFamily: "DMMono-Medium",
+              letterSpacing: 1.6,
+              color: styles.label,
+            }}
+          >
+            {label}
+          </Text>
+        </>
+      ) : (
+        // Countless tile: the name takes the line the number would have
+        // had, so the grid keeps its rhythm instead of leaving a hole.
+        <>
+          <Text
+            className="mt-4 text-[26px] leading-[1.05] tracking-tight"
+            style={{ fontFamily: "Crimson-SemiBold", color: styles.text }}
+          >
+            {label}
+          </Text>
+          <View className="mt-2 flex-row items-center" style={{ gap: 4 }}>
+            <Text
+              className="text-[10px] uppercase"
+              style={{
+                fontFamily: "DMMono-Medium",
+                letterSpacing: 1.6,
+                color: styles.label,
+              }}
+            >
+              Open
+            </Text>
+            <Feather name="arrow-right" size={11} color={styles.label} />
+          </View>
+        </>
+      )}
     </Pressable>
   );
 }
