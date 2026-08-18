@@ -12,15 +12,29 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import type { CanvasList } from "../../../lib/api";
+import {
+  COLUMN_LONG_PRESS_MS,
+  EDGE_BAND,
+  edgeAutoscrollDelta,
+} from "./autoscroll";
 
 // Long-press drag & drop for whole LISTS/COLUMNS on the horizontal Kanban.
 // This is the column-level sibling of useBoardDnd (which drags cards) and
 // it deliberately reuses the same trick stack so the two never fight:
-//  • Gesture.Pan().activateAfterLongPress(280) attached ONLY to the list
-//    HEADER (stripe + title row). Before activation any movement belongs
-//    to the horizontal ScrollView, so scrolling is untouched; after
-//    activation the board flips `scrollEnabled` off (programmatic scrollTo
-//    still works — that's what autoscroll needs).
+//  • Gesture.Pan().activateAfterLongPress attached to the WHOLE column,
+//    not just its header — pressing anywhere on a list picks it up, which
+//    is what an advocate reaches for. Before activation any movement
+//    belongs to the scrollers, so both horizontal board scrolling and
+//    vertical card scrolling are untouched; after activation the board
+//    flips `scrollEnabled` off (programmatic scrollTo still works —
+//    that's what autoscroll needs).
+//
+//    Cards live inside the column and have their OWN long-press drag, so
+//    the two would race for the same touch if they activated together.
+//    They don't: the card's delay (300ms) is comfortably shorter than the
+//    column's (450ms), so a finger resting on a card always lifts the
+//    card, and a finger anywhere else lifts the column. Deterministic,
+//    and it needs no gesture refs threaded through the tree.
 //  • The board's columns are fixed width with a known gap + content
 //    padding, so the target slot is pure arithmetic: take the finger's
 //    content-space X (panX + horizontal scroll offset), divide by the
@@ -32,11 +46,10 @@ import type { CanvasList } from "../../../lib/api";
 //    clone of the header follows the finger above everything.
 //  • Horizontal autoscroll runs on the UI thread (frame callback +
 //    scrollTo) exactly like the card hook.
-// Card drag (useBoardDnd) owns the cards body; this hook owns the header.
-// They share neither gesture nor scroll-disable path beyond the board
-// toggling `scrollEnabled`, so there is no cross-talk.
+// Card drag (useBoardDnd) owns a card; this hook owns everything else in
+// the column. They share the autoscroll curve (./autoscroll) and the
+// board's `scrollEnabled` toggle, and nothing else.
 
-const EDGE_BAND = 56; // px from screen edge that triggers h-autoscroll
 const HIT_THROTTLE_MS = 60;
 const CONTENT_PADDING = 16; // horizontal ScrollView contentContainer padding
 const COLUMN_GAP = 12;
@@ -171,12 +184,15 @@ export function useListDnd(opts: {
     onReorder(final);
   }, [onReorder]);
 
-  /* ─── Per-header gesture ─── */
-  const makeHeaderGesture = useCallback(
-    (list: CanvasList, count: number) =>
+  /* ─── Per-column gesture ─── */
+  const makeColumnGesture = useCallback(
+    (list: CanvasList, count: number, enabled = true) =>
       Gesture.Pan()
-        .enabled(!isTemp(list.id) && lists.length > 1)
-        .activateAfterLongPress(280)
+        // `enabled` is the caller's veto — the board stands the gesture
+        // down while a card composer is open in this column, so a
+        // long-press to select text doesn't pick the list up instead.
+        .enabled(enabled && !isTemp(list.id) && lists.length > 1)
+        .activateAfterLongPress(COLUMN_LONG_PRESS_MS)
         .shouldCancelWhenOutside(false)
         .onStart((e) => {
           dragX.value = e.absoluteX;
@@ -215,11 +231,7 @@ export function useListDnd(opts: {
     if (!draggingSV.value) return;
     const x = dragX.value;
     let delta = 0;
-    if (x < EDGE_BAND) {
-      delta = -(8 + Math.round((EDGE_BAND - x) / 5));
-    } else if (x > screenWSV.value - EDGE_BAND) {
-      delta = 8 + Math.round((x - (screenWSV.value - EDGE_BAND)) / 5);
-    }
+    delta = edgeAutoscrollDelta(x, screenWSV.value);
     if (delta !== 0) {
       const next = Math.max(0, hScrollOffset.value + delta);
       scrollTo(hScrollRef, next, 0, false);
@@ -300,7 +312,7 @@ export function useListDnd(opts: {
     // Ordered id array to render columns by while dragging (null when idle).
     previewOrder,
     overlay,
-    makeHeaderGesture,
+    makeColumnGesture,
   };
 }
 

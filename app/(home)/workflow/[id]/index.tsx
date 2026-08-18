@@ -166,6 +166,10 @@ export default function BoardDetail() {
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
 
+  // Which column has its "add a card" input open, if any — its drag
+  // gesture stands down while someone is typing in it.
+  const [composingListId, setComposingListId] = useState<string | null>(null);
+
   // Long-press card sheet + smart-delete sheet state
   const [activeCard, setActiveCard] = useState<PreviewTask | null>(null);
   const [requestTarget, setRequestTarget] =
@@ -704,10 +708,14 @@ export default function BoardDetail() {
                 listTitleById={listTitleById}
                 accent={styles.accent}
                 dnd={dnd}
-                headerGesture={listDnd.makeHeaderGesture(
+                columnGesture={listDnd.makeColumnGesture(
                   list,
-                  (tasksByList.get(list.id) || []).length
+                  (tasksByList.get(list.id) || []).length,
+                  composingListId !== list.id
                 )}
+                onComposingChange={(open) =>
+                  setComposingListId(open ? list.id : null)
+                }
                 isColumnDragging={listDnd.draggingListId === list.id}
                 onAddCard={(title) => addCard(list.id, title)}
                 onCardPress={(task) =>
@@ -1033,9 +1041,10 @@ function ListColumn({
   listTitleById,
   accent,
   dnd,
-  headerGesture,
+  columnGesture,
   isColumnDragging,
   onAddCard,
+  onComposingChange,
   onCardPress,
   onCardLongPress,
 }: {
@@ -1048,9 +1057,10 @@ function ListColumn({
   listTitleById: Map<string, string>;
   accent: string;
   dnd: ReturnType<typeof useBoardDnd>;
-  headerGesture: ReturnType<ReturnType<typeof useListDnd>["makeHeaderGesture"]>;
+  columnGesture: ReturnType<ReturnType<typeof useListDnd>["makeColumnGesture"]>;
   isColumnDragging: boolean;
   onAddCard: (title: string) => void;
+  onComposingChange: (open: boolean) => void;
   onCardPress: (task: PreviewTask) => void;
   onCardLongPress: (task: PreviewTask) => void;
 }) {
@@ -1082,7 +1092,14 @@ function ListColumn({
       : null;
 
   return (
+    // The gesture wraps the entire column: press and hold anywhere on a
+    // list — header, gaps, over the cards, the empty space below them —
+    // and the whole thing lifts. Cards keep their own drag because their
+    // long-press fires first (300ms vs 450ms), so a finger on a card
+    // always takes the card and never the column.
+    <GestureDetector gesture={columnGesture}>
     <View
+      collapsable={false}
       style={{
         width: listWidth,
         maxHeight: colMaxHeight,
@@ -1103,9 +1120,9 @@ function ListColumn({
         elevation: 3,
       }}
     >
-      {/* Top stripe — doubles as the drag grip together with the title row */}
-      <GestureDetector gesture={headerGesture}>
-        <View collapsable={false}>
+      {/* Top stripe + title. No gesture of its own any more — the whole
+          column is the grip. */}
+      <View>
           <View style={{ height: 4, backgroundColor: stripe }} />
 
           {/* Header (long-press here to lift the whole column) */}
@@ -1142,8 +1159,7 @@ function ListColumn({
               <Feather name="more-vertical" size={13} color="#c0b69c" />
             ) : null}
           </View>
-        </View>
-      </GestureDetector>
+      </View>
 
       {/* Edges chips */}
       {(edges.incoming.length > 0 || edges.outgoing.length > 0) && (
@@ -1193,7 +1209,10 @@ function ListColumn({
           dnd.onColumnScroll(list.id, e.nativeEvent.contentOffset.y)
         }
         scrollEventThrottle={16}
-        scrollEnabled={!dnd.isDragging}
+        // Frozen while anything is in hand: a card mid-drag, or this whole
+        // column — otherwise the cards would slide under the finger that's
+        // carrying the column.
+        scrollEnabled={!dnd.isDragging && !isColumnDragging}
         style={{ flexShrink: 1 }}
         contentContainerStyle={{
           paddingHorizontal: 8,
@@ -1283,8 +1302,12 @@ function ListColumn({
 
         {/* Composer rides inside the scroll so it sits directly after the
             last card (web parity) instead of pinned to the column bottom. */}
-        <AddCardComposer onSubmit={onAddCard} />
+        <AddCardComposer
+          onSubmit={onAddCard}
+          onOpenChange={onComposingChange}
+        />
       </ScrollView>
     </View>
+    </GestureDetector>
   );
 }

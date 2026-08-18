@@ -9,12 +9,24 @@ import { Feather } from "@expo/vector-icons";
  */
 export default function AddCardComposer({
   onSubmit,
+  onOpenChange,
 }: {
   onSubmit: (title: string) => void;
+  /** Fires when the input opens/closes. The board uses it to stand the
+   *  column-drag gesture down while someone is typing — otherwise a
+   *  long-press to select text in here would lift the whole list. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+    // Only the open flag matters; the callback identity is the caller's
+    // business and re-notifying on every render would be noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (open) {
