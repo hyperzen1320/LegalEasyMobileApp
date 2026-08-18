@@ -51,6 +51,10 @@ import { useAuth } from "../../lib/auth-context";
 export default function DocumentsPanel({ caseId }: { caseId: string }) {
   const { isPartnerAdmin } = useAuth();
   const [docs, setDocs] = useState<CaseDocumentDTO[] | null>(null);
+  // The list is folded until asked for. It only ever grows — a matter a
+  // few years old carries twenty-odd papers — and left open it buried the
+  // hearing history and the disposal record below it.
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   // Which picker the Upload menu should open the attach sheet with.
@@ -190,32 +194,54 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
         elevation: 1,
       }}
     >
-      {/* Header */}
+      {/* Header — the title block is the disclosure control */}
       <View className="flex-row items-center justify-between">
-        <View>
-          <Text
-            className="text-[10px] uppercase text-app-copper-deep"
-            style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
-          >
-            Briefcase
-          </Text>
-          <View className="flex-row items-baseline gap-2 mt-0.5">
+        <Pressable
+          onPress={() => setOpen((v) => !v)}
+          disabled={count === 0}
+          className="flex-1 flex-row items-center gap-2 active:opacity-70"
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={
+            count === 0
+              ? "Documents"
+              : open
+                ? `Hide ${count} documents`
+                : `Show ${count} documents`
+          }
+        >
+          <View>
             <Text
-              className="text-[16px] tracking-tight text-app-ink"
-              style={{ fontFamily: "Crimson-SemiBold" }}
+              className="text-[10px] uppercase text-app-copper-deep"
+              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
             >
-              Documents
+              Briefcase
             </Text>
-            {count > 0 ? (
+            <View className="flex-row items-baseline gap-2 mt-0.5">
               <Text
-                className="text-[11px] text-app-fg-muted tabular-nums"
-                style={{ fontFamily: "DMMono", letterSpacing: 0.5 }}
+                className="text-[16px] tracking-tight text-app-ink"
+                style={{ fontFamily: "Crimson-SemiBold" }}
               >
-                · {count}
+                Documents
               </Text>
-            ) : null}
+              {count > 0 ? (
+                <Text
+                  className="text-[11px] text-app-fg-muted tabular-nums"
+                  style={{ fontFamily: "DMMono", letterSpacing: 0.5 }}
+                >
+                  · {count}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
+          {count > 0 ? (
+            <Feather
+              name={open ? "chevron-up" : "chevron-down"}
+              size={16}
+              color="#8a5821"
+            />
+          ) : null}
+        </Pressable>
         <Pressable
           onPress={() => setUploadMenu(true)}
           className="rounded-md flex-row items-center gap-1.5 px-3 py-2 active:opacity-90"
@@ -271,6 +297,31 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
             whole brief with the matter.
           </Text>
         </View>
+      ) : !open ? (
+        // Folded. A matter that has been running a few years carries
+        // twenty-odd papers, and the list used to push the hearing
+        // history and the disposal record off the bottom of the dossier.
+        // The count is on the header above; this is the door.
+        <Pressable
+          onPress={() => setOpen(true)}
+          className="mt-3.5 flex-row items-center justify-center gap-2 rounded-lg py-3 active:opacity-70"
+          style={{
+            borderWidth: 1,
+            borderColor: "#e3d9c0",
+            backgroundColor: "#faf6ed",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${count} documents`}
+        >
+          <Feather name="folder" size={14} color="#8a5821" />
+          <Text
+            className="text-[12.5px]"
+            style={{ fontFamily: "Manrope-SemiBold", color: "#8a5821" }}
+          >
+            {count === 1 ? "1 paper on file" : `${count} papers on file`}
+          </Text>
+          <Feather name="chevron-down" size={14} color="#8a5821" />
+        </Pressable>
       ) : (
         <View className="mt-3.5">
           {docs!.map((d, i) => (
@@ -332,7 +383,12 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
           setUploadSource(null);
         }}
         caseId={caseId}
-        onUploaded={load}
+        onUploaded={async () => {
+          // Unfold after an upload — you've just added a paper and the
+          // next thing you want is to see it land.
+          await load();
+          setOpen(true);
+        }}
       />
 
       {/* Upload ▾ — pick where the papers come from, then the staging
