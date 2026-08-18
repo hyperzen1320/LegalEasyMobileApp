@@ -21,10 +21,56 @@ import {
 import { useAuth } from "../../lib/auth-context";
 
 // Office-wide audit log (admin only, like the web sidebar item) —
-// cursor-paginated, with client-side narrowing by area and free text.
-// The server returns newest-first with `nextCursor` for the next page.
+// cursor-paginated, with a date range and free-text/area narrowing.
+//
+// The complaint was that it "only shows one day". It never had a date
+// limit: it asked for one page of 50 rows and, for a busy office, 50 rows
+// IS about a day. The web client has always had range presets; the app
+// had none and no way to say how far back it went. Both are here now, and
+// the range is applied server-side (the route has always accepted from/to
+// — see api/app/activity/route.ts) rather than fetched-then-thrown-away.
 
 const PAGE = 50;
+
+type RangeKey = "any" | "today" | "7d" | "30d" | "month";
+
+// Mirrors DATE_RANGE_PRESETS in the web ActivityClient so both platforms
+// mean the same thing by "Last 7 days".
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: "any", label: "Any time" },
+  { key: "today", label: "Today" },
+  { key: "7d", label: "7 days" },
+  { key: "30d", label: "30 days" },
+  { key: "month", label: "This month" },
+];
+
+function rangeBounds(key: RangeKey): { from?: string; to?: string } {
+  // en-CA gives yyyy-mm-dd in LOCAL time — using toISOString here would
+  // shift the day backwards for anyone in IST before 05:30.
+  const iso = (d: Date) => d.toLocaleDateString("en-CA");
+  const today = new Date();
+  switch (key) {
+    case "any":
+      return {};
+    case "today":
+      return { from: iso(today), to: iso(today) };
+    case "7d": {
+      const start = new Date(today);
+      start.setDate(start.getDate() - 6);
+      return { from: iso(start), to: iso(today) };
+    }
+    case "30d": {
+      const start = new Date(today);
+      start.setDate(start.getDate() - 29);
+      return { from: iso(start), to: iso(today) };
+    }
+    case "month":
+      return {
+        from: iso(new Date(today.getFullYear(), today.getMonth(), 1)),
+        to: iso(today),
+      };
+  }
+}
 
 const AREA_FILTERS: { key: string; label: string; match: (t: string) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
@@ -51,17 +97,20 @@ export default function OfficeActivity() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [area, setArea] = useState("all");
+  const [range, setRange] = useState<RangeKey>("any");
 
   // The web nav hides Activity from non-admins; mirror that here.
   useEffect(() => {
     if (status === "authenticated" && !isPartnerAdmin) router.back();
   }, [status, isPartnerAdmin, router]);
 
-  const load = useCallback(async (mode: "reset" | "more", before?: string) => {
+  const load = useCallback(
+    async (mode: "reset" | "more", before?: string, forRange?: RangeKey) => {
     try {
       const res = await partnerActivityHistory({
         limit: PAGE,
         before: mode === "more" ? before : undefined,
+        ...rangeBounds(forRange ?? "any"),
       });
       setRows((prev) =>
         mode === "more" ? [...prev, ...res.activity] : res.activity
@@ -72,27 +121,38 @@ export default function OfficeActivity() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load");
     }
-  }, []);
+  },
+    []
+  );
 
+  // Reload whenever the range changes — the bound is applied server-side,
+  // so this is a different query, not a client-side filter of what we have.
   useEffect(() => {
+    let alive = true;
+    setLoading(true);
     (async () => {
-      await load("reset");
-      setLoading(false);
+      await load("reset", undefined, range);
+      if (alive) setLoading(false);
     })();
-  }, [load]);
+    return () => {
+      alive = false;
+    };
+  }, [load, range]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load("reset");
+    await load("reset", undefined, range);
     setRefreshing(false);
-  }, [load]);
+  }, [load, range]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore || loading || !cursor) return;
     setLoadingMore(true);
-    await load("more", cursor);
+    // Carry the range — otherwise page 2 would quietly come back
+    // unbounded and the list would mix scopes.
+    await load("more", cursor, range);
     setLoadingMore(false);
-  }, [hasMore, loadingMore, loading, cursor, load]);
+  }, [hasMore, loadingMore, loading, cursor, load, range]);
 
   const filtered = useMemo(() => {
     const match = AREA_FILTERS.find((f) => f.key === area)?.match;
@@ -175,6 +235,40 @@ export default function OfficeActivity() {
               </Pressable>
             ) : null}
           </View>
+          {/* How far back to look. Applied server-side, so this is the
+              answer to "it only shows one day" — it never had a limit, it
+              just never asked for more than a page. */}
+          <View className="flex-row flex-wrap mt-2.5" style={{ gap: 6 }}>
+            {RANGES.map((r) => {
+              const on = r.key === range;
+              return (
+                <Pressable
+                  key={r.key}
+                  onPress={() => setRange(r.key)}
+                  className="rounded-full px-3 active:opacity-80"
+                  style={{
+                    paddingVertical: 5,
+                    backgroundColor: on ? "#c5853a" : "#ffffff",
+                    borderWidth: 1,
+                    borderColor: on ? "#c5853a" : "#e3d9c0",
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text
+                    className="text-[11px]"
+                    style={{
+                      fontFamily: on ? "Manrope-SemiBold" : "Manrope",
+                      color: on ? "#2a1c08" : "#0a1124",
+                    }}
+                  >
+                    {r.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <View className="flex-row flex-wrap mt-2.5" style={{ gap: 6 }}>
             {AREA_FILTERS.map((f) => {
               const on = f.key === area;
@@ -247,6 +341,28 @@ export default function OfficeActivity() {
                   <View className="items-center py-5">
                     <ActivityIndicator color="#c5853a" size="small" />
                   </View>
+                ) : rows.length > 0 ? (
+                  // Say what's on screen and whether there's more behind
+                  // it. Infinite scroll with no marker is exactly why this
+                  // read as "only one day".
+                  <Pressable
+                    onPress={hasMore ? loadMore : undefined}
+                    disabled={!hasMore}
+                    className="items-center py-6 active:opacity-70"
+                  >
+                    <Text
+                      className="text-[11px] uppercase"
+                      style={{
+                        fontFamily: "DMMono-Medium",
+                        letterSpacing: 1.4,
+                        color: hasMore ? "#8a5821" : "#a89c80",
+                      }}
+                    >
+                      {hasMore
+                        ? `Showing ${rows.length} · tap for more`
+                        : `That's all ${rows.length} — end of the ledger`}
+                    </Text>
+                  </Pressable>
                 ) : null
               }
               ListEmptyComponent={
@@ -256,8 +372,8 @@ export default function OfficeActivity() {
                     className="mt-3 text-[13px] text-app-fg-muted text-center"
                     style={{ fontFamily: "Manrope" }}
                   >
-                    {query || area !== "all"
-                      ? "Nothing matches this slice of the ledger."
+                    {query || area !== "all" || range !== "any"
+                      ? "Nothing matches this slice of the ledger. Try a wider date range."
                       : "No activity recorded yet."}
                   </Text>
                 </View>

@@ -1318,6 +1318,14 @@ export async function partnerActivityHistory(opts: {
   boardId?: string;
   limit?: number;
   before?: string;
+  /** ISO date (yyyy-mm-dd), inclusive lower bound. */
+  from?: string;
+  /** ISO date (yyyy-mm-dd), inclusive upper bound (end of that day). */
+  to?: string;
+  /** Narrow to one actor's entries. */
+  actor?: string;
+  /** e.g. "case." / "task." — matches a family of actions. */
+  actionPrefix?: string;
 }): Promise<{
   activity: ActivityHistoryRow[];
   hasMore: boolean;
@@ -1327,6 +1335,13 @@ export async function partnerActivityHistory(opts: {
   if (opts.boardId) qs.set("board", opts.boardId);
   qs.set("limit", String(opts.limit ?? 50));
   if (opts.before) qs.set("before", opts.before);
+  // The web route has always accepted these (api/app/activity/route.ts);
+  // the app simply never sent them, which is why it looked like the feed
+  // only went back a day — it was one page of 50, not a date limit.
+  if (opts.from) qs.set("from", opts.from);
+  if (opts.to) qs.set("to", opts.to);
+  if (opts.actor) qs.set("actor", opts.actor);
+  if (opts.actionPrefix) qs.set("actionPrefix", opts.actionPrefix);
   return api(`/api/app/activity?${qs.toString()}`, { method: "GET" });
 }
 
