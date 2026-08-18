@@ -191,47 +191,13 @@ export default function CaseDetailView({
               </Pressable>
             </Animated.View>
 
-            <Animated.View entering={FadeInDown.duration(380).delay(430)}>
-              <Pressable
-                onPress={() =>
-                  router.push(
-                    `/(home)/cases/new?from=${data.case.id}` as never
-                  )
-                }
-                className="mt-4 rounded-xl bg-app-paper p-4 flex-row items-center gap-3 active:opacity-85"
-                style={{
-                  shadowColor: "#0a1124",
-                  shadowOpacity: 0.05,
-                  shadowRadius: 8,
-                  shadowOffset: { width: 0, height: 1 },
-                  elevation: 1,
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Duplicate this matter"
-              >
-                <View
-                  className="h-9 w-9 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: "#efe5d0" }}
-                >
-                  <Feather name="copy" size={15} color="#8a5821" />
-                </View>
-                <View className="flex-1">
-                  <Text
-                    className="text-[14px] text-app-ink"
-                    style={{ fontFamily: "Manrope-SemiBold" }}
-                  >
-                    Duplicate this matter
-                  </Text>
-                  <Text
-                    className="text-[11px] mt-0.5 text-app-fg-muted"
-                    style={{ fontFamily: "Manrope" }}
-                  >
-                    New case form, pre-filled with this client and court.
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={15} color="#8a5821" />
-              </Pressable>
-            </Animated.View>
+            {/* "Duplicate this matter" used to sit here. Chambers asked
+                for it gone: a pre-filled new case one tap from an open
+                dossier was mostly a way to create a near-copy by
+                accident, and a real second matter for the same client is
+                started from the vault's New button anyway. The
+                /cases/new?from= route stays registered so anything that
+                still links to it keeps working. */}
 
             <Animated.View entering={FadeInDown.duration(380).delay(460)}>
               <DeleteRow
