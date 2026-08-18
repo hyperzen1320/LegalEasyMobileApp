@@ -23,6 +23,7 @@ import {
   ApiError,
   type PartnerPrompt,
 } from "../../../lib/api";
+import { useDeleteRequestFallback } from "../../../components/useDeleteRequestFallback";
 
 const TOOLS: { name: string; description: string; href: string }[] = [
   {
@@ -418,6 +419,8 @@ function PromptCard({
 }) {
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { offerDeleteRequest, deleteRequestSheet } =
+    useDeleteRequestFallback();
 
   async function copy() {
     try {
@@ -444,11 +447,12 @@ function PromptCard({
               await partnerDeletePrompt(p.id);
               onDeleted(p.id);
             } catch (err) {
+              setDeleting(false);
+              if (offerDeleteRequest(err)) return;
               Alert.alert(
                 "Couldn't delete",
                 err instanceof ApiError ? err.message : "Try again."
               );
-              setDeleting(false);
             }
           },
         },
@@ -605,6 +609,7 @@ function PromptCard({
           )}
         </Animated.View>
       ) : null}
+      {deleteRequestSheet}
     </View>
   );
 }

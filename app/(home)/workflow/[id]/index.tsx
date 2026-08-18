@@ -35,6 +35,7 @@ import {
 import { BOARD_COLOR_STYLES } from "../../../../components/BoardColors";
 import { useBoardLiveFeed } from "../../../../lib/useBoardLiveFeed";
 import { useBoardPresence } from "../../../../lib/useBoardPresence";
+import { useAuth } from "../../../../lib/auth-context";
 
 import CardItem from "../../../../components/workflow/CardItem";
 import AddCardComposer from "../../../../components/workflow/AddCardComposer";
@@ -82,6 +83,10 @@ export default function BoardDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const boardId = String(id);
   const router = useRouter();
+  // The bell opens the board's audit trail and the delete-request queue —
+  // both the office admin's. It used to be on the header for everyone,
+  // which is how juniors could read the activity feed.
+  const { isPartnerAdmin } = useAuth();
 
   // Compact keeps a peek of the next column (the "there's more" cue);
   // bigger windows get fixed, comfortable column widths and free scroll.
@@ -610,12 +615,16 @@ export default function BoardDetail() {
           onBack={() => router.back()}
           onExport={data ? () => setExporting(true) : null}
           onSettings={data ? () => setSettingsOpen(true) : null}
-          onBell={() => {
-            live.markSeen();
-            router.push(
-              `/(home)/workflow/${boardId}/activity` as never
-            );
-          }}
+          onBell={
+            isPartnerAdmin
+              ? () => {
+                  live.markSeen();
+                  router.push(
+                    `/(home)/workflow/${boardId}/activity` as never
+                  );
+                }
+              : null
+          }
         />
 
         {loading ? (
@@ -853,7 +862,7 @@ function Header({
   onBack: () => void;
   onExport?: (() => void) | null;
   onSettings?: (() => void) | null;
-  onBell: () => void;
+  onBell: (() => void) | null;
 }) {
   return (
     <View
@@ -968,7 +977,9 @@ function Header({
         </Pressable>
       ) : null}
 
-      {/* Bell */}
+      {/* Bell — office admin only; it opens the audit trail and the
+          delete-request queue, neither of which is a junior's to read. */}
+      {onBell ? (
       <Pressable
         onPress={onBell}
         hitSlop={6}
@@ -1006,6 +1017,7 @@ function Header({
           </View>
         ) : null}
       </Pressable>
+      ) : null}
     </View>
   );
 }
