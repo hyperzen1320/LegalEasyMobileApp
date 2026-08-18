@@ -44,6 +44,7 @@ import CourtFilter, {
   courtKeyOf,
 } from "../../components/hearings/CourtFilter";
 import CnrChip from "../../components/CnrChip";
+import { caseHref } from "../../components/cases/useCaseOrigin";
 import { useAuth } from "../../lib/auth-context";
 import ExportSheet from "../../components/ExportSheet";
 import {
@@ -437,6 +438,7 @@ export default function Hearings() {
                   >
                     <ScheduledRow
                       c={c}
+                      bucket={bucket}
                       officeName={officeName}
                       template={template}
                       saved={Boolean(savedPatches[c.id])}
@@ -952,12 +954,14 @@ function Segmented({
 
 function ScheduledRow({
   c,
+  bucket,
   officeName,
   template,
   saved,
   onUpdate,
 }: {
   c: PartnerHearingItem;
+  bucket: HearingBucket;
   officeName: string;
   template: string;
   // This matter's hearing was updated in this session and the list hasn't
@@ -971,7 +975,9 @@ function ScheduledRow({
   const hasWa = Boolean(c.clientWhatsapp || c.clientPhone);
 
   function openCase() {
-    router.push(`/(home)/cases/${c.id}` as never);
+    // Carry the bucket along so backing out of the dossier returns to
+    // this list, on this tab — not to the Case Vault.
+    router.push(caseHref(c.id, "hearings", bucket) as never);
   }
 
   return (
@@ -1204,7 +1210,9 @@ function PendingCard({
       {/* Title row */}
       <View className="flex-row items-start gap-3">
         <Pressable
-          onPress={() => router.push(`/(home)/cases/${c.id}` as never)}
+          onPress={() =>
+            router.push(caseHref(c.id, "hearings", "pending") as never)
+          }
           className="flex-1 active:opacity-70"
         >
           <Text
