@@ -1979,7 +1979,8 @@ export async function partnerMarkAttendance(payload: {
 
 export type OfficeSettings = {
   // null = keep forever; otherwise prune activity older than N days.
-  activityRetentionDays: 90 | 365 | null;
+  // Mirrors VALID_RETENTION in the API's app/settings route.
+  activityRetentionDays: 90 | 180 | 365 | null;
 };
 
 export async function partnerGetSettings(): Promise<{

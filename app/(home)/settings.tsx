@@ -22,6 +22,10 @@ import { useAuth } from "../../lib/auth-context";
 // Office settings — currently one lever: how long the activity ledger is
 // kept (forever / 365 / 90 days). Admin-only, like the web.
 
+// Labels say the number chambers asked for, in the order they'd read it:
+// longest kept first. "Ninety days" and "One year" were the same choices
+// spelled out in words, which made the setting harder to match against
+// what someone remembered picking.
 const RETENTION_OPTIONS: {
   value: OfficeSettings["activityRetentionDays"];
   label: string;
@@ -34,13 +38,18 @@ const RETENTION_OPTIONS: {
   },
   {
     value: 365,
-    label: "One year",
-    hint: "Entries older than 365 days are pruned.",
+    label: "365 days",
+    hint: "A rolling year of history.",
+  },
+  {
+    value: 180,
+    label: "180 days",
+    hint: "A rolling six months.",
   },
   {
     value: 90,
-    label: "Ninety days",
-    hint: "A rolling quarter of history.",
+    label: "90 days",
+    hint: "A rolling quarter.",
   },
 ];
 
@@ -159,7 +168,18 @@ export default function OfficeSettingsScreen() {
                 style={{ fontFamily: "Manrope" }}
               >
                 How long the office keeps its audit trail. Pruning runs on
-                the server and can't be undone.
+                the server and can&rsquo;t be undone.
+              </Text>
+              {/* Chambers read the bell drawer's one screenful as proof the
+                  setting wasn't working. It was: the drawer only ever
+                  asked for a page. Say where the whole record lives. */}
+              <Text
+                className="text-[12px] leading-[19px] text-app-fg-muted mb-3.5"
+                style={{ fontFamily: "Manrope" }}
+              >
+                This sets what is kept, not what is shown. To read further
+                back than the bell drawer&rsquo;s first page, open More
+                &rarr; Office Activity, which has date ranges.
               </Text>
 
               <View
