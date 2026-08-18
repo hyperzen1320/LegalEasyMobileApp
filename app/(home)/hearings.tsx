@@ -96,24 +96,27 @@ function patchFromSavedCase(
 
 export default function Hearings() {
   const { isPartnerAdmin } = useAuth();
-  const [bucket, setBucket] = useState<HearingBucket>("today");
-  // Dashboard stat tiles deep-link straight into a bucket
-  // (/(home)/hearings?bucket=tomorrow).
+  const router = useRouter();
+
+  // The bucket lives in the URL, not in component state.
+  //
+  // It used to be useState synced from the route param by an effect. That
+  // had two holes, and the dashboard fell through both: arriving with NO
+  // param left whatever bucket the tab was last on (tapping "Today" landed
+  // you on Tomorrow), and arriving with the SAME param as last time didn't
+  // re-run the effect either (Today → switch to Pending by hand → Today
+  // again = still Pending). Adding a param to the link would have fixed
+  // one of those and left the other.
+  //
+  // With the URL as the single source of truth there is no second copy to
+  // drift: every entry point lands on the bucket it asked for, and the
+  // segmented control just rewrites the param.
   const { bucket: bucketParam } = useLocalSearchParams<{ bucket?: string }>();
-  useEffect(() => {
-    if (
-      (bucketParam === "today" ||
-        bucketParam === "tomorrow" ||
-        bucketParam === "pending") &&
-      bucketParam !== bucket
-    ) {
-      setLoading(true);
-      setBucket(bucketParam);
-    }
-    // Only react to the param — `bucket` changing via the segmented
-    // control must not re-trigger this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bucketParam]);
+  const bucket: HearingBucket =
+    bucketParam === "tomorrow" || bucketParam === "pending"
+      ? bucketParam
+      : "today";
+
   const [items, setItems] = useState<PartnerHearingItem[]>([]);
   const [counts, setCounts] = useState({ today: 0, tomorrow: 0, pending: 0 });
   const [officeName, setOfficeName] = useState("");
@@ -178,11 +181,21 @@ export default function Hearings() {
     []
   );
 
+  // One place handles every bucket change — the segmented control, a
+  // dashboard tile, a deep link. They all arrive as a new `bucket`, so
+  // they all get the spinner and a cleared patch set without each caller
+  // having to remember.
   useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setSavedPatches({});
     (async () => {
       await load(bucket);
-      setLoading(false);
+      if (alive) setLoading(false);
     })();
+    return () => {
+      alive = false;
+    };
   }, [bucket, load]);
 
   // The office's WhatsApp notice template — fetched once; the WhatsApp button
@@ -209,9 +222,9 @@ export default function Hearings() {
 
   function changeBucket(next: HearingBucket) {
     if (next === bucket) return;
-    setLoading(true);
-    setSavedPatches({});
-    setBucket(next);
+    // Rewrite the param rather than holding a second copy of the bucket;
+    // the effect above reacts to it exactly as it does to a deep link.
+    router.setParams({ bucket: next });
   }
 
   // Save landed — hold the record locally so the card and its WhatsApp

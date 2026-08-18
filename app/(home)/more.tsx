@@ -81,7 +81,7 @@ export default function More() {
       onPress: () => router.push("/(home)/users"),
     },
     {
-      label: "Nambiraj Law Dynasty",
+      label: "Our website",
       description: "Visit our public site — legalezi.com",
       icon: "external-link",
       onPress: () => Linking.openURL("https://legalezi.com"),

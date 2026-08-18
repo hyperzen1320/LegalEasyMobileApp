@@ -39,9 +39,14 @@ import { useAuth } from "../../lib/auth-context";
 //
 // Everyone in chambers can add papers and read them. Taking one OUT of
 // the office — sharing it, saving it to the phone, printing it — and
-// removing one are the admin's calls. The server enforces the same line
-// (403 on ?download=1 and on DELETE for non-admins), so hiding the
-// buttons is the courtesy, not the control.
+// removing one are the admin's calls.
+//
+// DELETE is genuinely enforced server-side (non-admins get a 403 and must
+// raise a delete request). Share / save / print are NOT, and can't be:
+// anyone allowed to view a document necessarily receives its bytes. The
+// gate there is which buttons this sheet renders. Worth being clear-eyed
+// about rather than mistaking the earlier ?download=1 check for a data
+// boundary — it only ever changed a Content-Disposition header.
 
 export default function DocumentsPanel({ caseId }: { caseId: string }) {
   const { isPartnerAdmin } = useAuth();
@@ -87,11 +92,23 @@ export default function DocumentsPanel({ caseId }: { caseId: string }) {
     load();
   }, [load]);
 
+  // Pull the bytes into the app cache.
+  //
+  // Deliberately WITHOUT ?download=1. That flag only flips the server's
+  // Content-Disposition from `inline` to `attachment` — which matters to a
+  // browser and to nothing else. The app reads the bytes off the local
+  // file for every action (share, save, print, view), so the header is
+  // irrelevant here; the filename still arrives either way.
+  //
+  // It was actively harmful: the server 403s ?download=1 for non-admins,
+  // so asking for it meant a plain user couldn't even VIEW a document —
+  // the one action they're allowed. Which buttons exist is what enforces
+  // the permission (see the sheet below), not this query parameter.
   async function ensureLocal(doc: CaseDocumentDTO): Promise<DownloadedFile> {
     const hit = cacheRef.current.get(doc.id);
     if (hit) return hit;
     const file = await downloadAuthorized(
-      caseDocumentPath(caseId, doc.id, { download: true }),
+      caseDocumentPath(caseId, doc.id),
       { fallbackName: doc.filename, mime: doc.contentType }
     );
     cacheRef.current.set(doc.id, file);
