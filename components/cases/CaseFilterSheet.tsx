@@ -11,9 +11,11 @@ import Sheet from "../Sheet";
 import { DateField } from "../CaseFields";
 import CourtFilterField from "./CourtFilterField";
 import {
+  CASE_SORT_OPTIONS,
   partnerListCourts,
   partnerListUsers,
   type CaseListFilters,
+  type CaseSort,
   type PartnerCourt,
 } from "../../lib/api";
 
@@ -128,6 +130,58 @@ export default function CaseFilterSheet({
           </View>
         ) : (
           <>
+            {/* Order first — it's the control people reach for when a
+                matter they just filed isn't where they expected it. */}
+            <Text
+              className="text-[10px] uppercase text-app-copper-deep mb-2"
+              style={{ fontFamily: "DMMono-Medium", letterSpacing: 1.8 }}
+            >
+              Order
+            </Text>
+            <View className="gap-2 mb-5">
+              {CASE_SORT_OPTIONS.map((o) => {
+                const on = (draft.sort ?? "recent") === o.key;
+                return (
+                  <Pressable
+                    key={o.key}
+                    onPress={() => set("sort", o.key as CaseSort)}
+                    className="flex-row items-center gap-3 rounded-xl px-3.5 py-3 active:opacity-80"
+                    style={{
+                      backgroundColor: on ? "#0a1124" : "#ffffff",
+                      borderWidth: 1,
+                      borderColor: on ? "#0a1124" : "#e3d9c0",
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <View className="flex-1 min-w-0">
+                      <Text
+                        className="text-[13.5px]"
+                        style={{
+                          fontFamily: "Manrope-SemiBold",
+                          color: on ? "#f5ebd6" : "#0a1124",
+                        }}
+                      >
+                        {o.label}
+                      </Text>
+                      <Text
+                        className="text-[11px] mt-0.5"
+                        style={{
+                          fontFamily: "Manrope",
+                          color: on ? "#c4baa3" : "#a89c80",
+                        }}
+                      >
+                        {o.hint}
+                      </Text>
+                    </View>
+                    {on ? (
+                      <Feather name="check" size={16} color="#ddb074" />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <ChipSection
               label="Court place"
               empty="No places yet — add courts in Court Hub."
@@ -185,7 +239,7 @@ export default function CaseFilterSheet({
             <View className="mt-6 flex-row items-center gap-3">
               <Pressable
                 onPress={() => {
-                  onApply({ search: draft.search }, {});
+                  onApply({ search: draft.search, sort: draft.sort }, {});
                   onClose();
                 }}
                 className="rounded-xl px-4 items-center justify-center active:opacity-80"
