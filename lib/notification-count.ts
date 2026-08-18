@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { partnerDeleteRequestCount } from "./api";
+import { reportBadgePart } from "./push";
 
 // Singleton subscribable for the bell badge count. Many components can
 // observe the same count (home topbar, admin topbar, any future drawer
@@ -37,6 +38,8 @@ async function tick(): Promise<void> {
     if (myReq !== inFlight) return; // staler than the latest request
     if (res.count === currentCount) return; // no change, skip notifying
     currentCount = res.count;
+    // Same number on the OS badge as on the bell.
+    reportBadgePart("requests", currentCount);
     subscribers.forEach((cb) => cb(currentCount));
   } catch {
     // Bell badge isn't critical — staying silent is better than

@@ -202,6 +202,29 @@ All endpoints are tenant-scoped on the server. The mobile client never sees data
 | 🌈 **Gradients** | `expo-linear-gradient` for board tiles |
 | 🎞️ **Animations** | `react-native-reanimated` (FadeInDown stagger, opacity fades) |
 | 📅 **Date input** | Custom 3-field bottom-sheet date picker — no native dep, no rebuild |
+| 🔔 **Push** | `expo-notifications` — the only way the launcher icon carries a dot while the app is closed |
+
+### 🔔 Push notifications
+
+`lib/push.ts` asks for the permission, fetches the Expo token scoped to
+`extra.eas.projectId`, and registers it with `POST /api/app/push` after sign-in
+(revoked on sign-out, so a shared handset never shows the last advocate's
+notifications). The server pushes on a **Senior Desk message**, a **filed
+delete request** and a **decision on one**.
+
+Two things it needs that code can't provide:
+
+1. **FCM V1 credentials on the EAS project** — a Firebase project for
+   `com.legalezi.legaleasy` with its service-account JSON uploaded via
+   `eas credentials`. Without it, Expo accepts the send and Android delivers
+   nothing.
+2. **A dev/production build.** `expo-notifications` is a native module, so
+   Expo Go can't get a token — the app detects that and quietly carries on
+   with its in-app badges.
+
+The status-bar icon is generated with the rest of the brand assets
+(`node scripts/generate-brand-assets.js`): Android reads only its alpha
+channel, so it's the monogram in white on transparent.
 
 ---
 
@@ -210,7 +233,8 @@ All endpoints are tenant-scoped on the server. The mobile client never sees data
 - [x] **Phase 1 MVP** — every web module mirrored on mobile
 - [x] **Phase 1.5** — Kanban detail inside boards, now with long-press **drag & drop**
 - [x] **Full web parity** — case documents (upload/preview/share/print), every export (Excel · Word · PDF · board snapshots), Senior Desk chat + reminders, attendance register, disposed archive, office activity & settings, tablet two-pane layouts — see [`docs/PARITY_PLAN.md`](docs/PARITY_PLAN.md)
-- [ ] **Next** — Push notifications for next-hearing reminders · Offline write queue
+- [x] **Push notifications** — Senior Desk messages and delete requests reach the phone with the app closed
+- [ ] **Next** — Push for next-hearing reminders · Offline write queue
 
 ---
 

@@ -46,6 +46,7 @@ import { useEffect } from "react";
 import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider } from "../lib/auth-context";
 import { applyOrientationPolicy } from "../lib/orientation";
+import { useNotificationRouting } from "../lib/push";
 
 // Hold the native splash (the brass seal on paper) until fonts are in,
 // then fade it straight into whatever index renders — no blank frame,
@@ -105,6 +106,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          {/* One place decides where a tapped notification lands — cold
+              start or already-open, it's the same handler. */}
+          <NotificationRouter />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -119,4 +123,11 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+// Hooks can't be called conditionally in RootLayout (it returns early
+// while the fonts load), so the listener lives in its own leaf.
+function NotificationRouter() {
+  useNotificationRouting();
+  return null;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { partnerChatUnread } from "./api";
+import { reportBadgePart } from "./push";
 
 // Singleton subscribable for chat unread counts — same pattern as
 // notification-count.ts (one poll no matter how many observers,
@@ -35,6 +36,9 @@ async function tick(): Promise<void> {
     const res = await partnerChatUnread();
     if (myReq !== inFlight) return;
     current = res;
+    // Keep the OS badge — and so the launcher dot — in step with the
+    // number the app itself is showing.
+    reportBadgePart("chat", res.totalUnread);
     subscribers.forEach((cb) => cb(current));
   } catch {
     // Badge isn't critical — silence beats an unactionable toast.

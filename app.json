@@ -38,7 +38,14 @@
           "backgroundColor": "#f4ecda"
         }
       ],
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#c5853a"
+        }
+      ]
     ],
     "extra": {
       "router": {},
