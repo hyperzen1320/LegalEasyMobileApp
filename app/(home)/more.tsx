@@ -76,7 +76,7 @@ export default function More() {
       feature: "disposed",
       description: "Closed matters archive",
       icon: "archive",
-      onPress: () => openSection("/(home)/cases/disposed"),
+      onPress: () => openSection("/(home)/disposed"),
     },
     {
       label: "Users / Advocates",

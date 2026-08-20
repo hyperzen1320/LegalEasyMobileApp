@@ -13,7 +13,7 @@ import {
 import CaseForm, {
   type CaseFormInitial,
 } from "../../../../components/cases/CaseForm";
-import { backToList } from "../../../../lib/navigation";
+import { backToList, openSection } from "../../../../lib/navigation";
 
 export default function EditCase() {
   const router = useRouter();
@@ -74,9 +74,10 @@ export default function EditCase() {
       // Web parity: moving a matter to "Disposed" sends it to the archive.
       if (res.case.status === "Disposed") {
         // Unwind the dossier too — a matter that has just been archived
-        // isn't a screen to land back on.
+        // isn't a screen to land back on. The archive is its own tab now,
+        // so this is a hop across, not a push deeper.
         router.dismissAll();
-        router.push("/(home)/cases/disposed" as never);
+        openSection("/(home)/disposed");
       } else {
         // Back down to the dossier that opened this editor. `replace`
         // swapped the editor for a SECOND dossier and left the first one
