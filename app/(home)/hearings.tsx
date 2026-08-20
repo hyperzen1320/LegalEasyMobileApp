@@ -25,11 +25,7 @@ import {
   type PartnerCourt,
   type PartnerHearingItem,
 } from "../../lib/api";
-import {
-  renderNotice,
-  parseDateLocal,
-  type NoticeData,
-} from "../../lib/notice-template";
+import { openWhatsAppNotice } from "../../lib/whatsapp";
 import { DateField } from "../../components/CaseFields";
 import StatusCombobox from "../../components/cases/StatusCombobox";
 import Sheet from "../../components/Sheet";
@@ -1464,7 +1460,7 @@ function WhatsAppButton({
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, officeName, template, hasNumber)}
+      onPress={() => void openWhatsAppNotice(c, officeName, template)}
       className="h-10 w-10 rounded-full items-center justify-center active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1524,7 +1520,7 @@ function WhatsAppPill({
 }) {
   return (
     <Pressable
-      onPress={() => openWhatsApp(c, officeName, template, hasNumber)}
+      onPress={() => void openWhatsAppNotice(c, officeName, template)}
       className="flex-1 rounded-md py-2.5 items-center justify-center flex-row gap-2 active:opacity-80"
       style={{
         backgroundColor: hasNumber ? "#1faa4f" : "#9bbfa8",
@@ -1567,58 +1563,6 @@ async function callClient(c: PartnerHearingItem, hasNumber: boolean) {
     }
   } catch {
     Alert.alert("Couldn't open the dialer.");
-  }
-}
-
-async function openWhatsApp(
-  c: PartnerHearingItem,
-  officeName: string,
-  template: string,
-  hasNumber: boolean
-) {
-  if (!hasNumber) {
-    Alert.alert(
-      "No WhatsApp number on file",
-      "Add a WhatsApp or phone number on this case, or in Client Crew."
-    );
-    return;
-  }
-  const raw = (c.clientWhatsapp || c.clientPhone).replace(/\D/g, "");
-  if (!raw) return;
-  const wa = raw.length === 10 ? `91${raw}` : raw;
-
-  // The wording comes from the office's editable bilingual template, filled
-  // with this matter's details (My Profile → Pre-filled WhatsApp message).
-  const data: NoticeData = {
-    caseNo: c.caseNo || "",
-    clientName: c.clientName || "",
-    cnr: c.cnr || "",
-    fileNo: c.fileNo || "",
-    status: c.status || "",
-    oppositeParty: c.oppositeParty || "",
-    courtName: c.courtName || "",
-    courtPlace: c.courtPlace || "",
-    lastHearingDate: parseDateLocal(c.lastHearingDate),
-    nextHearingDate: parseDateLocal(c.nextHearingDate),
-    officeName: officeName || "",
-  };
-  const text = renderNotice(template, data);
-
-  const native = `whatsapp://send?phone=${wa}&text=${encodeURIComponent(text)}`;
-  const fallback = `https://wa.me/${wa}?text=${encodeURIComponent(text)}`;
-  try {
-    const can = await Linking.canOpenURL(native);
-    if (can) {
-      await Linking.openURL(native);
-    } else {
-      await Linking.openURL(fallback);
-    }
-  } catch {
-    try {
-      await Linking.openURL(fallback);
-    } catch {
-      Alert.alert("Couldn't open WhatsApp.");
-    }
   }
 }
 

@@ -14,11 +14,13 @@ import { Feather, FontAwesome } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   partnerGetCase,
+  partnerGetNoticeTemplate,
   partnerUpdateCase,
   partnerDeleteCase,
   ApiError,
   type PartnerCase,
 } from "../../lib/api";
+import { openWhatsAppNotice } from "../../lib/whatsapp";
 import { useDeleteRequestFallback } from "../useDeleteRequestFallback";
 import { DateField, formatDateForDisplay } from "../CaseFields";
 import StatusCombobox from "./StatusCombobox";
@@ -46,6 +48,22 @@ export default function CaseDetailView({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The office's WhatsApp notice wording. Fetched once per mount, not per
+  // matter — it belongs to the chambers, not the case. Blank falls back to
+  // the bundled bilingual default inside renderNotice.
+  const [template, setTemplate] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    partnerGetNoticeTemplate()
+      .then((r) => {
+        if (alive) setTemplate(r.template);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (!caseId) return;
@@ -137,6 +155,7 @@ export default function CaseDetailView({
               <ContactCard
                 c={data.case}
                 officeName={data.officeName}
+                template={template}
               />
             </Animated.View>
 
@@ -637,9 +656,12 @@ function UpdateHearingCard({
 function ContactCard({
   c,
   officeName,
+  template,
 }: {
   c: PartnerCase;
   officeName: string;
+  /** The office's WhatsApp notice template; "" falls back to the default. */
+  template: string;
 }) {
   const hasAny = c.clientName || c.clientPhone || c.clientWhatsapp || c.clientAddress;
 
@@ -655,62 +677,12 @@ function ContactCard({
     }
   }
 
-  async function openWhatsApp() {
-    const raw = (c.clientWhatsapp || c.clientPhone).replace(/\D/g, "");
-    if (!raw) return;
-    const wa = raw.length === 10 ? `91${raw}` : raw;
-
-    const dateStr = c.nextHearingDate
-      ? new Date(c.nextHearingDate).toLocaleDateString("en-IN", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })
-      : "the date communicated separately";
-
-    const venue = [c.courtName, c.courtPlace].filter(Boolean).join(", ") ||
-      "the Hon'ble Court";
-    const office = officeName || "this office";
-    const matter = c.oppositeParty
-      ? `${c.clientName || "you"} vs ${c.oppositeParty}`
-      : c.caseNo;
-
-    const text = [
-      `Dear Mr./Ms. ${c.clientName || "Client"},`,
-      ``,
-      `Warm greetings from ${office}.`,
-      ``,
-      `This is to formally apprise you that the next hearing in your matter ${c.caseNo}` +
-        (c.oppositeParty ? ` (${matter})` : ``) +
-        ` has been scheduled on ${dateStr} before the ${venue}.`,
-      ``,
-      `You are kindly requested to ensure your presence on the said date and time, accompanied by all relevant documents previously discussed, so as to enable us to proceed with your matter without procedural complication. Non-attendance may give rise to adverse consequences, including the issuance of warrants or ex-parte orders, which we wish to avoid in your interest.`,
-      ``,
-      `For any clarification or to revisit the brief prior to the hearing, please feel free to contact our office at your convenience.`,
-      ``,
-      `Thank you for your continued cooperation and trust.`,
-      ``,
-      `Regards,`,
-      office,
-    ].join("\n");
-
-    const native = `whatsapp://send?phone=${wa}&text=${encodeURIComponent(text)}`;
-    const fallback = `https://wa.me/${wa}?text=${encodeURIComponent(text)}`;
-    try {
-      const can = await Linking.canOpenURL(native);
-      if (can) {
-        await Linking.openURL(native);
-      } else {
-        await Linking.openURL(fallback);
-      }
-    } catch {
-      try {
-        await Linking.openURL(fallback);
-      } catch {
-        Alert.alert("Couldn't open WhatsApp.");
-      }
-    }
+  function openWhatsApp() {
+    // The office's own bilingual template, filled from the case record
+    // this view is currently showing — so the message quotes the date and
+    // status that were just saved, and reads identically to the one
+    // Hearing Track sends for the same matter.
+    void openWhatsAppNotice(c, officeName, template);
   }
 
   return (
