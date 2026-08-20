@@ -34,6 +34,8 @@ export default function More() {
     router.replace("/");
   }
 
+  // Work Flow isn't listed here: it has its own tab, and so do Dashboard,
+  // Cases and Hearings. More is for what the bar doesn't carry.
   const tools: MoreItem[] = [
     {
       label: "Senior Desk",
@@ -56,13 +58,6 @@ export default function More() {
       description: "Master list of courts",
       icon: "home",
       onPress: () => openSection("/(home)/courts"),
-    },
-    {
-      label: "Work Flow",
-      feature: "workflow",
-      description: "Boards for the office's own processes",
-      icon: "layout",
-      onPress: () => openSection("/(home)/workflow"),
     },
     {
       label: "AI Assistant",
