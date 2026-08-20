@@ -64,9 +64,9 @@ export default function HomeLayout() {
         // Every tab opens at its own root.
         //
         // Several tabs are stacks that OTHER tabs push into: the Hearing
-        // Track and Today's Board open a case dossier inside the Cases
-        // stack, More opens the disposed archive there, the bell opens a
-        // board inside Work Flow. Nothing ever unwound those, so the
+        // Track, Today's Board and the disposed archive all open a case
+        // dossier inside the Cases stack, and the bell opens a board
+        // inside Work Flow. Nothing ever unwound those, so the
         // depth accumulated: a dossier opened from the diary on Monday
         // was still sitting under the Case Vault on Tuesday, and tapping
         // Case Vault pushed a second copy of the list on top of it —
@@ -167,6 +167,12 @@ export default function HomeLayout() {
           },
         }}
       />
+      {/* The disposed archive used to live at cases/disposed, inside the
+          Cases stack — the one More destination that wasn't a tab of its
+          own. Back could therefore only pop to the Case Vault, however
+          you got there. As a sibling route it goes back to More like
+          every other entry, and backBehavior does it for free. */}
+      <Tabs.Screen name="disposed" options={{ href: null }} />
       <Tabs.Screen name="clients" options={{ href: null }} />
       <Tabs.Screen name="courts" options={{ href: null }} />
       <Tabs.Screen name="ai" options={{ href: null }} />
