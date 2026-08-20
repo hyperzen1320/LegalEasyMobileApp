@@ -35,7 +35,7 @@ import StatusCombobox from "../../components/cases/StatusCombobox";
 import Sheet from "../../components/Sheet";
 import DisposalFields, {
   EMPTY_DISPOSAL,
-  todayLocal,
+  disposalPayload,
   type DisposalRecord,
 } from "../../components/cases/DisposalFields";
 import { useDeleteRequestFallback } from "../../components/useDeleteRequestFallback";
@@ -104,25 +104,6 @@ function patchFromSavedCase(
       saved && "lastHearingDate" in saved
         ? (saved.lastHearingDate ?? null)
         : before.nextHearingDate || before.lastHearingDate,
-  };
-}
-
-// Disposing a matter is office-admin only on the server (it answers 403
-// with delete_request_required for everyone else), so the disposal record
-// only goes on the wire when the status is actually being set to
-// "Disposed" — and only the admin is shown the fields at all.
-function disposalPayload(
-  status: string,
-  d: DisposalRecord
-): Record<string, unknown> {
-  if (status.trim() !== "Disposed") return {};
-  return {
-    // Default the recorded date to today rather than leaving the archive
-    // undated because someone skipped the field.
-    disposalDate: d.disposalDate || todayLocal(),
-    caStatus: d.caStatus.trim(),
-    disposalRemarks: d.disposalRemarks.trim(),
-    receivedByClient: d.receivedByClient,
   };
 }
 
